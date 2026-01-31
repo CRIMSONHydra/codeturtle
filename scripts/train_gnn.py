@@ -70,8 +70,12 @@ def train_model(epochs: int = 50, batch_size: int = 32, learning_rate: float = 0
             
             dataset.append(data)
             
-        except Exception as e:
-            logger.error(f"Failed to convert {fpath}: {e}")
+        except OSError:
+            logger.exception(f"Failed to read/process {fpath}")
+            continue
+        except Exception:
+             # Catch other unexpected errors (AST parsing etc) with traceback
+            logger.exception(f"Failed to convert {fpath}")
             continue
             
     logger.info(f"   Successfully converted {len(dataset)} graphs.")

@@ -45,7 +45,10 @@ uv pip install torch --index-url https://download.pytorch.org/whl/cu121
 ### Basic Usage
 
 ```bash
-# 1. Collect data from GitHub
+# 1. Configure Environment (Optional)
+export GITHUB_TOKEN="your_token"
+
+# 2. Collect data from GitHub
 python scripts/collect_data.py --limit 3
 
 # 2. Extract features
@@ -61,8 +64,8 @@ uv run python scripts/train_gnn.py --epochs 20
 # Extract with GNN:
 uv run python scripts/extract_features.py --clean --gnn
 
-# 3. Run analysis
-python scripts/run_analysis.py --visualize --report
+# 3. Run analysis (pass the GNN embeddings file)
+python scripts/run_analysis.py --visualize --report --gnn-embeddings outputs/gnn_embeddings.npy
 
 # 4. Launch dashboard
 streamlit run src/visualization/dashboard.py

@@ -108,12 +108,9 @@ def main():
     
     # Load embeddings if provided
     current_features = [feature_matrix]
+    struct_weight = 1.0
     
-    if args.embeddings and args.embeddings.exists():
-        print(f"\n🧠 Loading CodeBERT embeddings from {args.embeddings}...")
-        embeddings = np.load(args.embeddings)
-        print(f"   Loaded embeddings: {embeddings.shape}")
-        
+    # 1. CodeBERT Embeddings
     if args.embeddings and args.embeddings.exists():
         print(f"\n🧠 Loading CodeBERT embeddings from {args.embeddings}...")
         embeddings = np.load(args.embeddings)
@@ -122,11 +119,10 @@ def main():
         from sklearn.preprocessing import StandardScaler
         scaler_emb = StandardScaler()
         emb_scaled = scaler_emb.fit_transform(embeddings)
-        current_features.append(emb_scaled * 0.6) # Weight for CodeBERT
+        current_features.append(emb_scaled * 0.6)
+        struct_weight = 0.4 # Reduce structural weight if embeddings present
         
-        # Adjust structural weight if we have embeddings
-        current_features[0] = StandardScaler().fit_transform(feature_matrix) * 0.4
-        
+    # 2. GNN Embeddings
     if args.gnn_embeddings and args.gnn_embeddings.exists():
         print(f"\n🕸️  Loading GNN embeddings from {args.gnn_embeddings}...")
         gnn_embs = np.load(args.gnn_embeddings)
@@ -135,10 +131,23 @@ def main():
         from sklearn.preprocessing import StandardScaler
         scaler_gnn = StandardScaler()
         gnn_scaled = scaler_gnn.fit_transform(gnn_embs)
-        current_features.append(gnn_scaled * 0.5) # Weight for GNN
+        current_features.append(gnn_scaled * 0.5)
+        # If we have both, structural weight might need further adjustment, 
+        # but 0.4 is a reasonable baseline if CodeBERT is present.
         
+    # Apply scaling to structural features
+    from sklearn.preprocessing import StandardScaler
+    current_features[0] = StandardScaler().fit_transform(feature_matrix) * struct_weight
+    
+    # Validation
+    base_rows = current_features[0].shape[0]
+    for i, feats in enumerate(current_features[1:], 1):
+        if feats.shape[0] != base_rows:
+            print(f"❌ Feature mismatch! Structural has {base_rows} rows, but input #{i} has {feats.shape[0]}")
+            return
+
     # Combine all
-    clustering_features = np.hstack(current_features) if len(current_features) > 1 else feature_matrix
+    clustering_features = np.hstack(current_features)
     print(f"   Combined feature matrix: {clustering_features.shape}")
     
     # Clustering

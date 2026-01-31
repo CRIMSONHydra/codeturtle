@@ -148,6 +148,7 @@ def main():
     all_embeddings = []
     embedding_files = []
     all_gnn_embeddings = []
+    gnn_files = []
     failed_count = 0
     total_processed = 0
     
@@ -249,14 +250,23 @@ def main():
         # 3. GNN Embeddings
         if gnn_embedder:
             batch_gnn = []
-            for code in codes:
+            batch_gnn_files = []
+            
+            for path, code in zip(paths, codes, strict=True):
                 try:
-                    # TODO: Batch this? Currently one-by-one in GNNEmbedder
                     gnn_emb = gnn_embedder.get_embedding(code)
                     batch_gnn.append(gnn_emb)
+                    batch_gnn_files.append(str(path))
                 except Exception as e:
-                    batch_gnn.append(np.zeros(32))
-            all_gnn_embeddings.append(np.array(batch_gnn))
+                    # If GNN fails for this file, we skip it for GNN output
+                    # but it might still be in features/embeddings
+                    # This is why we need a sidecar file mapping
+                   # logger.warning(f"GNN failed for {path}: {e}")
+                   pass
+            
+            if batch_gnn:
+                all_gnn_embeddings.append(np.array(batch_gnn))
+                gnn_files.extend(batch_gnn_files)
                 
         total_processed += len(codes)
 
@@ -299,6 +309,11 @@ def main():
         final_gnn = np.vstack(all_gnn_embeddings)
         gnn_output = args.output.parent / 'gnn_embeddings.npy'
         np.save(gnn_output, final_gnn)
+        
+        gnn_map_output = args.output.parent / 'gnn_files.json'
+        with open(gnn_map_output, 'w') as f:
+            json.dump(gnn_files, f, indent=2)
+            
         print(f"\n💾 Saved GNN embeddings to {gnn_output}")
         print(f"   Shape: {final_gnn.shape}")
 

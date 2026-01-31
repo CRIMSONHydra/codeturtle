@@ -10,6 +10,7 @@ import logging
 from typing import List, Dict, Tuple, Optional, Set
 import torch
 from torch_geometric.data import Data
+from torch_geometric.utils import to_networkx
 import networkx as nx
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ AST_NODE_TYPES = [
     'ListComp', 'SetComp', 'DictComp', 'GeneratorExp', 'Await', 'Yield',
     'YieldFrom', 'Compare', 'Call', 'FormattedValue', 'JoinedStr', 'Constant',
     'Attribute', 'Subscript', 'Starred', 'Name', 'List', 'Tuple', 'Slice',
-    'Load', 'Store', 'Del', 'arg', 'arguments', 'alias', 'exceptHandler'
+    'Load', 'Store', 'Del', 'arg', 'arguments', 'alias', 'ExceptHandler'
 ]
 
 NODE_TYPE_MAP = {name: i for i, name in enumerate(AST_NODE_TYPES)}
@@ -126,5 +127,5 @@ class ASTGraphConverter:
 
     def visualize(self, data: Data):
         """Vizualize graph using networkx (for debug)."""
-        g = torch_geometric.utils.to_networkx(data, to_undirected=True)
+        g = to_networkx(data, to_undirected=True)
         nx.draw(g)
