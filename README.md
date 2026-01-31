@@ -14,6 +14,7 @@ CodeTurtle is an ML-powered system that analyzes GitHub Python code to discover 
 - **📊 Pattern Discovery**: Cluster similar code patterns using K-Means, DBSCAN, or Hierarchical clustering
 - **🔍 Risk Detection**: Rule-based static analysis + ML anomaly detection
 - **🧠 Code Embeddings**: GPU-accelerated CodeBERT/UniXcoder embeddings
+- **🕸️ Graph Neural Networks**: Learn deep structural embeddings from AST graphs using GCNs
 - **📈 Visualizations**: t-SNE/PCA cluster plots, risk heatmaps, feature importance
 - **🖥️ Interactive Dashboard**: Streamlit web interface for exploration
 
@@ -44,7 +45,10 @@ uv pip install torch --index-url https://download.pytorch.org/whl/cu121
 ### Basic Usage
 
 ```bash
-# 1. Collect data from GitHub
+# 1. Configure Environment (Optional)
+export GITHUB_TOKEN="your_token"
+
+# 2. Collect data from GitHub
 python scripts/collect_data.py --limit 3
 
 # 2. Extract features
@@ -54,8 +58,14 @@ python scripts/export_onnx.py
 
 python scripts/extract_features.py --clean --onnx --cache
 
-# 3. Run analysis
-python scripts/run_analysis.py --visualize --report
+# (Optional) Use GNN for deep structural analysis
+# Train model first:
+uv run python scripts/train_gnn.py --epochs 20
+# Extract with GNN:
+uv run python scripts/extract_features.py --clean --gnn
+
+# 3. Run analysis (pass the GNN embeddings file)
+python scripts/run_analysis.py --visualize --report --gnn-embeddings outputs/gnn_embeddings.npy
 
 # 4. Launch dashboard
 streamlit run src/visualization/dashboard.py

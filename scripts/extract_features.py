@@ -9,6 +9,11 @@ import argparse
 import sys
 import json
 from pathlib import Path
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 
@@ -77,6 +82,11 @@ def main():
         action='store_true',
         help='Use ONNX Runtime for accelerated inference'
     )
+    parser.add_argument(
+        '--gnn',
+        action='store_true',
+        help='Generate GNN structural embeddings (requires trained GNN model)'
+    )
     
     args = parser.parse_args()
 
@@ -108,6 +118,20 @@ def main():
             print("   Run: uv pip install transformers torch")
             return
 
+    # Initialize GNN if needed
+    gnn_embedder = None
+    if args.gnn:
+        print("\n🕸️  Initializing GNN model...")
+        try:
+            from src.features.gnn import GNNEmbedder
+            gnn_embedder = GNNEmbedder(use_gpu=args.onnx or args.embeddings) # Reuse GPU flag logic
+            if not gnn_embedder._has_model:
+                print("   ⚠️  GNN model not found or failed to load. Skipping GNN.")
+                gnn_embedder = None
+        except ImportError as e:
+            print(f"⚠️ Could not load GNN module: {e}")
+            gnn_embedder = None
+
     # Initialize vector store if caching is enabled
     vector_store = None
     if args.cache and args.embeddings:
@@ -128,6 +152,8 @@ def main():
     all_features = []
     all_embeddings = []
     embedding_files = []
+    all_gnn_embeddings = []
+    gnn_files = []
     failed_count = 0
     total_processed = 0
     
@@ -226,6 +252,34 @@ def main():
                 except Exception as e:
                     print(f"   ⚠️ Embedding batch failed: {e}")
                 
+        # 3. GNN Embeddings
+        if gnn_embedder:
+            batch_gnn = []
+            batch_gnn_files = []
+            
+            for path, code in zip(paths, codes, strict=True):
+                try:
+                    gnn_emb = gnn_embedder.get_embedding(code)
+                    batch_gnn.append(gnn_emb)
+                    batch_gnn_files.append(str(path))
+                except Exception as e:
+                    # Log failure and append zero vector to keep alignment
+                    logger.warning(f"GNN failed for {path}: {e}")
+                    
+                    # Determine dimension for zero vector
+                    dim = 32 # Default CodeGNN output
+                    if batch_gnn:
+                        dim = batch_gnn[0].shape[0]
+                    elif all_gnn_embeddings:
+                         dim = all_gnn_embeddings[0].shape[1]
+                         
+                    batch_gnn.append(np.zeros(dim))
+                    batch_gnn_files.append(str(path))
+            
+            if batch_gnn:
+                all_gnn_embeddings.append(np.array(batch_gnn))
+                gnn_files.extend(batch_gnn_files)
+                
         total_processed += len(codes)
 
     print(f"✅ Successfully extracted features from {len(all_features)} files")
@@ -261,6 +315,19 @@ def main():
             
         print(f"\n💾 Saved embeddings to {emb_output}")
         print(f"   Shape: {final_embeddings.shape}")
+
+    # Save GNN Embeddings
+    if all_gnn_embeddings:
+        final_gnn = np.vstack(all_gnn_embeddings)
+        gnn_output = args.output.parent / 'gnn_embeddings.npy'
+        np.save(gnn_output, final_gnn)
+        
+        gnn_map_output = args.output.parent / 'gnn_files.json'
+        with open(gnn_map_output, 'w') as f:
+            json.dump(gnn_files, f, indent=2)
+            
+        print(f"\n💾 Saved GNN embeddings to {gnn_output}")
+        print(f"   Shape: {final_gnn.shape}")
 
     print("\n🎉 Feature extraction complete!")
 

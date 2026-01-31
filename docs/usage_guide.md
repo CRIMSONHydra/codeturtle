@@ -15,6 +15,12 @@ How to use **CodeTurtle** effectively to discover patterns in your codebase.
 
 Use the `collect_data.py` script to grab repositories.
 
+**Configuration (Optional but Recommended):**
+To avoid GitHub API rate limits or to access private repositories, set your token:
+```bash
+export GITHUB_TOKEN="your_github_token"
+```
+
 **Basic Usage:**
 ```bash
 uv run python scripts/collect_data.py --repos "TheAlgorithms/Python" --limit 5
@@ -23,7 +29,7 @@ uv run python scripts/collect_data.py --repos "TheAlgorithms/Python" --limit 5
 **Custom Repositories:**
 You can target any public GitHub repository. For a good analysis mix, try combining "good" code (libraries, algorithms) with "messy" code (student projects, code smell examples).
 ```bash
-uv run python scripts/collect_data.py --repos "django/django" "flask/flask" "my-username/my-messy-project"
+uv run python scripts/collect_data.py --repos "django/django" "pallets/flask" "my-username/my-messy-project"
 ```
 
 **Check Stats:**
@@ -57,6 +63,19 @@ Skip unchanged files and run inference 3x faster.
 uv run python scripts/extract_features.py --clean --embeddings --cache --onnx
 ```
 *Use `--clear-cache` to reset the embedding cache.*
+
+
+**With Graph Neural Networks (Deep Structural Analysis):**
+Capture complex structural patterns (like recursive logic flow) using a GNN.
+```bash
+# 1. Train the GNN on your collected data (Self-Supervised)
+uv run python scripts/train_gnn.py --epochs 20
+
+# 2. Extract features using the trained model
+uv run python scripts/extract_features.py --clean --gnn
+# Value matches the output filename from step 2 (gnn_embeddings.npy)
+uv run python scripts/run_analysis.py --gnn-embeddings outputs/gnn_embeddings.npy --report
+```
 
 ---
 
