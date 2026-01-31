@@ -154,7 +154,14 @@ def main():
         print("\n🕸️  Initializing GNN model...")
         try:
             from src.features.gnn import GNNEmbedder
-            gnn_embedder = GNNEmbedder(use_gpu=args.onnx or args.embeddings) # Reuse GPU flag logic
+            # Use CPU for GNN when ONNX is enabled to avoid CUDA conflicts
+            # GNN is fast enough on CPU for graph processing
+            gnn_use_gpu = not args.onnx and (args.embeddings or torch.cuda.is_available())
+            gnn_embedder = GNNEmbedder(use_gpu=gnn_use_gpu)
+            if gnn_use_gpu:
+                print("   Using GPU for GNN")
+            else:
+                print("   Using CPU for GNN (avoids CUDA conflicts with ONNX)")
             if not gnn_embedder._has_model:
                 print("   ⚠️  GNN model not found or failed to load. Skipping GNN.")
                 gnn_embedder = None

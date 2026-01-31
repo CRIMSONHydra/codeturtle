@@ -99,14 +99,41 @@ class GNNEmbedder:
         data = self.converter.code_to_graph(code)
         if data is None:
             return np.zeros(32)
-            
-        data = data.to(self.device)
         
-        # Batch vector for single graph (all zeros)
-        batch = torch.zeros(data.x.size(0), dtype=torch.long, device=self.device)
-        
-        with torch.no_grad():
-            _, embedding = self.model(data.x, data.edge_index, batch)
+        try:
+            data = data.to(self.device)
             
-        return embedding.cpu().numpy().squeeze()
+            # Batch vector for single graph (all zeros)
+            batch = torch.zeros(data.x.size(0), dtype=torch.long, device=self.device)
+            
+            with torch.no_grad():
+                _, embedding = self.model(data.x, data.edge_index, batch)
+                
+            return embedding.cpu().numpy().squeeze()
+            
+        except RuntimeError as e:
+            # CUDA errors - try CPU fallback
+            if "CUDA" in str(e) or "cuda" in str(e):
+                try:
+                    # Clear CUDA cache and try on CPU
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    
+                    # Move model and data to CPU for this inference
+                    data_cpu = data.to('cpu')
+                    batch_cpu = torch.zeros(data_cpu.x.size(0), dtype=torch.long, device='cpu')
+                    
+                    # Temporarily move model to CPU
+                    model_cpu = self.model.to('cpu')
+                    with torch.no_grad():
+                        _, embedding = model_cpu(data_cpu.x, data_cpu.edge_index, batch_cpu)
+                    
+                    # Move model back to GPU
+                    self.model.to(self.device)
+                    
+                    return embedding.numpy().squeeze()
+                except Exception:
+                    pass
+            
+            return np.zeros(32)
 

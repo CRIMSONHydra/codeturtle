@@ -105,6 +105,18 @@ class ASTGraphConverter:
 
         if node_count == 0:
             return None
+        
+        # Size limits to prevent CUDA memory issues
+        MAX_NODES = 5000
+        MAX_EDGES = 50000
+        
+        if node_count > MAX_NODES:
+            logger.debug(f"Graph too large: {node_count} nodes (max {MAX_NODES})")
+            return None
+        
+        if len(edge_index[0]) > MAX_EDGES:
+            logger.debug(f"Too many edges: {len(edge_index[0])} (max {MAX_EDGES})")
+            return None
 
         # Convert to Tensors
         # x: Node features [num_nodes, num_features] -> We use One-Hot encoding conceptually,
@@ -115,7 +127,19 @@ class ASTGraphConverter:
         x_indices = torch.tensor(node_features, dtype=torch.long)
         x = torch.nn.functional.one_hot(x_indices, num_classes=NUM_NODE_TYPES).float()
         
-        edge_index_tensor = torch.tensor(edge_index, dtype=torch.long)
+        # Handle empty edge case
+        if len(edge_index[0]) == 0:
+            # Add self-loop for single node
+            edge_index_tensor = torch.tensor([[0], [0]], dtype=torch.long)
+        else:
+            edge_index_tensor = torch.tensor(edge_index, dtype=torch.long)
+        
+        # Validate edge indices are within bounds
+        if edge_index_tensor.numel() > 0:
+            max_idx = edge_index_tensor.max().item()
+            if max_idx >= node_count:
+                logger.warning(f"Invalid edge index: {max_idx} >= {node_count}")
+                return None
         
         data = Data(x=x, edge_index=edge_index_tensor)
         
