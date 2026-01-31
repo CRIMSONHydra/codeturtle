@@ -101,7 +101,8 @@ def remove_docstrings(code: str) -> str:
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             if (node.body and 
                 isinstance(node.body[0], ast.Expr) and 
-                isinstance(node.body[0].value, (ast.Str, ast.Constant))):
+                isinstance(node.body[0].value, ast.Constant) and
+                isinstance(node.body[0].value.value, str)):
                 
                 docstring_node = node.body[0]
                 # Mark lines for removal
