@@ -20,6 +20,9 @@ from src.features import extract_structural_features, StructuralFeatures
 from config.settings import OUTPUTS_DIR, RAW_DATA_DIR
 
 
+from src.utils import batch_generator
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Extract features from Python code files"
@@ -52,6 +55,12 @@ def main():
         action='store_true',
         help='Clean code (remove comments/docstrings) before analysis'
     )
+    parser.add_argument(
+        '--batch-size',
+        type=int,
+        default=32,
+        help='Number of files to process per batch (default: 32)'
+    )
     
     args = parser.parse_args()
     
@@ -67,98 +76,115 @@ def main():
         print("❌ No files found!")
         return
     
-    # Extract features
-    print("\n⚙️ Extracting structural features...")
-    
-    results = []
-    failed = 0
-    
-    for i, filepath in enumerate(files):
-        if (i + 1) % 50 == 0:
-            print(f"  Processed {i + 1}/{len(files)} files...")
-        
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                code = f.read()
-            
-            if args.clean:
-                code = clean_code(code)
-            
-            features = extract_structural_features(code)
-            
-            if features:
-                row = features.to_dict()
-                row['filepath'] = str(filepath)
-                row['filename'] = filepath.name
-                results.append(row)
-            else:
-                failed += 1
-                
-        except Exception as e:
-            failed += 1
-            continue
-    
-    print(f"✅ Successfully extracted features from {len(results)} files")
-    if failed:
-        print(f"⚠️ Failed to process {failed} files")
-    
-    # Save to CSV
-    df = pd.DataFrame(results)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(args.output, index=False)
-    print(f"\n💾 Saved features to {args.output}")
-    
-    # Extract embeddings if requested
+    # Initialize embedder if needed
+    embedder = None
     if args.embeddings:
-        print("\n🧠 Generating CodeBERT embeddings...")
+        print("\n🧠 Initializing CodeBERT model...")
         try:
             from src.features import CodeBERTEmbedder
-            
             embedder = CodeBERTEmbedder()
-            
-            codes = []
-            valid_files = []
-            
-            for filepath in files[:len(results)]:
-                try:
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        code = f.read()
-                    if args.clean:
-                        code = clean_code(code)
-                    codes.append(code)
-                    valid_files.append(str(filepath))
-                except:
-                    continue
-            
-            embeddings = embedder.get_embeddings_batch(codes)
-            
-            # Save embeddings
-            emb_output = args.output.parent / 'embeddings.npy'
-            np.save(emb_output, embeddings)
-            
-            # Save file mapping
-            mapping_output = args.output.parent / 'embedding_files.json'
-            with open(mapping_output, 'w') as f:
-                json.dump(valid_files, f, indent=2)
-            
-            print(f"✅ Saved embeddings to {emb_output}")
-            print(f"   Shape: {embeddings.shape}")
-            
         except ImportError as e:
             print(f"⚠️ Could not load embeddings module: {e}")
             print("   Run: uv pip install transformers torch")
+            return
+
+    # Process in batches
+    print(f"\n⚙️ Processing in batches of {args.batch_size}...")
     
-    # Print summary
-    print("\n📊 Feature Summary:")
-    print(f"   Total files: {len(results)}")
-    print(f"   Feature columns: {len(df.columns) - 2}")  # Exclude filepath, filename
+    all_features = []
+    all_embeddings = []
+    embedding_files = []
+    failed_count = 0
+    total_processed = 0
     
-    # Show some stats
-    numeric_cols = df.select_dtypes(include=[np.number]).columns[:5]
-    print("\n   Sample statistics:")
-    for col in numeric_cols:
-        print(f"   - {col}: mean={df[col].mean():.2f}, max={df[col].max()}")
+    # Iterate through batches
+    num_batches = (len(files) + args.batch_size - 1) // args.batch_size
     
+    for i, (paths, codes) in enumerate(batch_generator(files, args.batch_size)):
+        print(f"  Batch {i+1}/{num_batches} ({len(codes)} files)...")
+        
+        # Clean code if requested
+        if args.clean:
+            cleaned_codes = []
+            for code in codes:
+                try:
+                    cleaned_codes.append(clean_code(code))
+                except:
+                    cleaned_codes.append(code) # Fallback to raw if clean fails
+            codes = cleaned_codes
+            
+        # 1. Structural Features
+        for path, code in zip(paths, codes):
+            try:
+                features = extract_structural_features(code)
+                if features:
+                    row = features.to_dict()
+                    row['filepath'] = str(path)
+                    row['filename'] = path.name
+                    all_features.append(row)
+                else:
+                    failed_count += 1
+            except:
+                failed_count += 1
+
+        # 2. Embeddings
+        if embedder:
+            try:
+                # Embedder handles batching internally, but we feed it our batch
+                batch_embeddings = embedder.get_embeddings_batch(
+                    codes, 
+                    batch_size=args.batch_size, 
+                    show_progress=False
+                )
+                
+                # Careful: batch_embeddings might be smaller if some failed inside embedder?
+                # Actually get_embeddings_batch returns zeros for failed ones, so length matches `codes`
+                
+                # We need to sync embeddings with filenames. 
+                # Since we are iterating strictly parallel, logic should hold.
+                
+                all_embeddings.append(batch_embeddings)
+                embedding_files.extend([str(p) for p in paths])
+                
+            except Exception as e:
+                print(f"   ⚠️ Embedding batch failed: {e}")
+                
+        total_processed += len(codes)
+
+    print(f"✅ Successfully extracted features from {len(all_features)} files")
+    if failed_count:
+        print(f"⚠️ Failed to process {failed_count} files")
+    
+    # Save Features CSV
+    if all_features:
+        df = pd.DataFrame(all_features)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(args.output, index=False)
+        print(f"\n💾 Saved features to {args.output}")
+        
+        # Show stats
+        print("\n📊 Feature Summary:")
+        print(f"   Feature columns: {len(df.columns) - 2}")
+        numeric_cols = df.select_dtypes(include=[np.number]).columns[:5]
+        print("   Sample statistics:")
+        for col in numeric_cols:
+            print(f"   - {col}: mean={df[col].mean():.2f}")
+
+    # Save Embeddings
+    if all_embeddings:
+        # Concatenate all batches
+        final_embeddings = np.vstack(all_embeddings)
+        
+        emb_output = args.output.parent / 'embeddings.npy'
+        np.save(emb_output, final_embeddings)
+        
+        mapping_output = args.output.parent / 'embedding_files.json'
+        with open(mapping_output, 'w') as f:
+            json.dump(embedding_files, f, indent=2)
+            
+        print(f"\n💾 Saved embeddings to {emb_output}")
+        print(f"   Shape: {final_embeddings.shape}")
+
     print("\n🎉 Feature extraction complete!")
 
 
