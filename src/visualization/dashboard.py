@@ -90,8 +90,30 @@ def run_dashboard():
         "📝 Code Viewer"
     ])
     
+    # Load Results Mode
+    df = None
+    if analysis_mode == "Load Results":
+        result_path = Path("outputs/analysis_results.csv")
+        if result_path.exists():
+            df = pd.read_csv(result_path)
+            # Map columns to dashboard expected names
+            df = df.rename(columns={
+                'filename': 'file',
+                'max_nesting_depth': 'nesting_depth',
+                'cyclomatic_complexity': 'complexity'
+            })
+            # Ensure essential columns exist
+            required = ['file', 'cluster', 'risk_score', 'loop_count', 'nesting_depth', 'function_count', 'complexity']
+            missing = [c for c in required if c not in df.columns]
+            if missing:
+                 st.error(f"Missing columns in results: {missing}")
+                 st.stop()
+        else:
+            st.warning(f"No results found at {result_path}. Run analysis first!")
+            st.stop()
+
     # Generate demo data if needed
-    if analysis_mode == "Demo Data":
+    elif analysis_mode == "Demo Data":
         np.random.seed(42)
         n_files = 100
         
@@ -106,7 +128,8 @@ def run_dashboard():
         }
         df = pd.DataFrame(demo_data)
         
-        # Overview tab
+    # Overview tab
+    if df is not None:
         with tab1:
             st.header("📊 Analysis Overview")
             
@@ -260,19 +283,35 @@ def run_dashboard():
             
             st.divider()
             
-            # Demo code
-            demo_code = '''
+            # Determine path to read
+            file_path_to_read = selected_file
+            if 'filepath' in file_info:
+                path_val = file_info['filepath']
+                # Ensure path is a valid non-empty string (handles NaN/None)
+                if isinstance(path_val, str) and path_val.strip():
+                    file_path_to_read = path_val
+
+            # Show actual code if file exists locally
+            if Path(file_path_to_read).exists():
+                 try:
+                     code_content = Path(file_path_to_read).read_text(errors='ignore')
+                     st.code(code_content, language='python')
+                     st.caption(f"Source: {file_path_to_read}")
+                 except OSError as e:
+                     st.error(f"Error reading file: {e}")
+            else:
+                 # Demo code fallback
+                demo_code = '''
 def example_function(data):
     """Example function for demonstration."""
     results = []
-    for item in data:
-        if item > 0:
-            for sub in item:
-                processed = sub * 2
-                results.append(processed)
     return results
 '''
-            st.code(demo_code, language='python')
+                st.code(demo_code, language='python')
+                st.warning("Original source file not found locally.")
+
+    elif analysis_mode == "Demo Data":
+         pass # Already handled by creating df but we need to prevent double message
     
     else:
         with tab1:

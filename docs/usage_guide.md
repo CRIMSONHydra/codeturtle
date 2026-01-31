@@ -141,7 +141,9 @@ uv run streamlit run src/visualization/dashboard.py
 ```
 
 **How to Use the Dashboard:**
-1.  **Overview Tab**: Check general stats. Are there many high-risk files?
+1.  **Select Mode**: Choose "**Load Results**" in the sidebar to visualize the actual analysis output (from `outputs/analysis_results.csv`).
+2.  **Upload Files**: Alternatively, upload new Python files for instant analysis.
+3.  **Demo Data**: Use the demo mode to explore dashboard features without data.
 2.  **Clusters Tab**: Look at the scatter plot.
     -   *Hover* over dots to see filenames.
     -   *Check* if similar files (e.g., sorting algorithms vs web views) are grouped together.
