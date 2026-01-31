@@ -64,6 +64,8 @@ class CodeBERTEmbedder:
         model_name: str = DEFAULT_EMBEDDING_MODEL,
         use_gpu: bool = USE_GPU,
         device: str = GPU_DEVICE,
+        use_onnx: bool = False,
+        onnx_path: str = "data/models/codebert_onnx"
     ):
         """
         Initialize the embedder.
@@ -72,10 +74,14 @@ class CodeBERTEmbedder:
             model_name: HuggingFace model name
             use_gpu: Whether to use GPU acceleration
             device: CUDA device string
+            use_onnx: Whether to use ONNX Runtime for inference
+            onnx_path: Path to ONNX model directory
         """
         self.model_name = model_name
         self.use_gpu = use_gpu
         self.device = device
+        self.use_onnx = use_onnx
+        self.onnx_path = onnx_path
         self.model = None
         self.tokenizer = None
         self._initialized = False
@@ -88,22 +94,40 @@ class CodeBERTEmbedder:
         torch = _load_torch()
         transformers = _load_transformers()
         
-        logger.info(f"Loading model: {self.model_name}")
-        
         # Determine device
         if self.use_gpu and torch.cuda.is_available():
-            self.device = torch.device(self.device)
+            self.device_obj = torch.device(self.device)
+            self.provider = "CUDAExecutionProvider"
             logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
             logger.info(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
         else:
-            self.device = torch.device("cpu")
+            self.device_obj = torch.device("cpu")
+            self.provider = "CPUExecutionProvider"
             logger.info("Using CPU (GPU not available or disabled)")
         
-        # Load tokenizer and model
+        # Load tokenizer
+        logger.info(f"Loading tokenizer: {self.model_name}")
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_name)
-        self.model = transformers.AutoModel.from_pretrained(self.model_name)
-        self.model = self.model.to(self.device)
-        self.model.eval()
+        
+        if self.use_onnx:
+            logger.info(f"Loading ONNX model from: {self.onnx_path}")
+            try:
+                from optimum.onnxruntime import ORTModelForFeatureExtraction
+                self.model = ORTModelForFeatureExtraction.from_pretrained(
+                    self.onnx_path,
+                    provider=self.provider
+                )
+                logger.info(f"ONNX Model loaded with provider: {self.provider}")
+            except ImportError:
+                raise ImportError("optimum[onnxruntime] required. Run: uv sync --all-extras")
+            except Exception as e:
+                logger.error(f"Failed to load ONNX model: {e}")
+                raise
+        else:
+            logger.info(f"Loading PyTorch model: {self.model_name}")
+            self.model = transformers.AutoModel.from_pretrained(self.model_name)
+            self.model = self.model.to(self.device_obj)
+            self.model.eval()
         
         self._initialized = True
         logger.info("Model loaded successfully")
@@ -131,8 +155,9 @@ class CodeBERTEmbedder:
                 padding=True,
             )
             
-            # Move to device
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            # Move to device (only for PyTorch)
+            if not self.use_onnx:
+                inputs = {k: v.to(self.device_obj) for k, v in inputs.items()}
             
             # Get embeddings
             with torch.no_grad():
@@ -191,7 +216,8 @@ class CodeBERTEmbedder:
                     padding=True,
                 )
                 
-                inputs = {k: v.to(self.device) for k, v in inputs.items()}
+                if not self.use_onnx:
+                    inputs = {k: v.to(self.device_obj) for k, v in inputs.items()}
                 
                 with torch.no_grad():
                     outputs = self.model(**inputs)

@@ -51,10 +51,10 @@ uv run python scripts/extract_features.py --clean --embeddings --batch-size 32
 ```
 *Tip: Reduce `--batch-size` if you run out of GPU memory.*
 
-**With Caching (Recommended for repeat runs):**
-Skip unchanged files to speed up subsequent runs.
+**With Caching & ONNX (Fastest):**
+Skip unchanged files and run inference 3x faster.
 ```bash
-uv run python scripts/extract_features.py --clean --embeddings --cache
+uv run python scripts/extract_features.py --clean --embeddings --cache --onnx
 ```
 *Use `--clear-cache` to reset the embedding cache.*
 

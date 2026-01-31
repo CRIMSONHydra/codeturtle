@@ -41,6 +41,12 @@ We parse the cleaned code into an **Abstract Syntax Tree (AST)** and traverse it
 **File**: `embeddings.py`
 We use Transformer-based models to convert code into a **768-dimensional dense vector**.
 -   **Model**: Defaults to `microsoft/unixcoder-base` (or `CodeBERT`). These models are pre-trained on millions of code snippets to understand algorithmic intent.
+-   **ONNX Acceleration**:
+    -   We provide an ONNX Export utility (`scripts/export_onnx.py`) to convert models for high-performance inference.
+    -   The `ONNXEmbedder` backend uses `onnxruntime` (CPU/GPU) to bypass PyTorch overhead, delivering significant speedups.
+-   **Vector Store (Caching)**:
+    -   We use **ChromaDB** to persist embeddings.
+    -   Before processing, the system computes a SHA-256 hash of the code. If the hash exists in the store, the file is skipped, enabling incremental updates.
 -   **Processing**:
     -   Code is tokenized and truncated to `512` tokens.
     -   Model runs in **inference mode** on GPU (if available).
