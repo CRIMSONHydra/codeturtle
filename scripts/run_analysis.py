@@ -101,7 +101,7 @@ def main():
         print("❌ No structural features found in CSV!")
         return
     
-    feature_matrix = df[available_features].values
+    feature_matrix = df[available_features].values.astype(float)
     file_names = df['filepath'].tolist() if 'filepath' in df.columns else None
     
     print(f"   Using {len(available_features)} features for clustering")
@@ -110,31 +110,84 @@ def main():
     current_features = [feature_matrix]
     struct_weight = 1.0
     
+    # Helper to align embeddings
+    def load_and_align_embeddings(emb_path: Path, target_files: list, scaling_factor: float):
+        if not emb_path.exists():
+            return None
+            
+        print(f"\n   Loading embeddings from {emb_path}...")
+        embeddings = np.load(emb_path)
+        
+        # Check for sidecar mapping
+        # Try both naming conventions: `embedding_files.json` or `gnn_files.json`
+        # Using name convention relative to the input file
+        mapping_path = None
+        if "gnn" in emb_path.name:
+            mapping_path = emb_path.parent / "gnn_files.json"
+        elif "embeddings" in emb_path.name:
+            mapping_path = emb_path.parent / "embedding_files.json"
+            
+        if not mapping_path or not mapping_path.exists():
+            print(f"      ⚠️ No sidecar mapping found ({mapping_path}), assuming direct alignment.")
+            if embeddings.shape[0] != len(target_files):
+                 print(f"      ❌ Shape mismatch: Embeddings {embeddings.shape[0]} vs Data {len(target_files)}")
+                 return None
+            return embeddings * scaling_factor
+
+        print(f"      Using mapping file: {mapping_path}")
+        with open(mapping_path, 'r') as f:
+            emb_files = json.load(f)
+            
+        # Create map: filepath -> embedding vector
+        # Using string representation to match CSV filepath column
+        emb_map = {str(f): emb for f, emb in zip(emb_files, embeddings)}
+        
+        aligned_embeddings = []
+        missing_count = 0
+        
+        # Align with target_files (df['filepath'])
+        # target_files contains strings of filepaths
+        
+        for fpath in target_files:
+            fpath_str = str(fpath)
+            if fpath_str in emb_map:
+                aligned_embeddings.append(emb_map[fpath_str])
+            else:
+                # If missing, fill with zeros
+                aligned_embeddings.append(np.zeros(embeddings.shape[1]))
+                missing_count += 1
+                
+        if missing_count > 0:
+            print(f"      ⚠️ {missing_count} files missing from embeddings (filled with zeros)")
+        else:
+            print(f"      ✅ All {len(target_files)} files aligned successfully")
+
+        # Create aligned array
+        aligned = np.array(aligned_embeddings)
+        
+        # Final validation check
+        if aligned.shape[0] != len(target_files):
+             raise ValueError(f"Alignment failed: Result has {aligned.shape[0]} rows, expected {len(target_files)}")
+             
+        from sklearn.preprocessing import StandardScaler
+        scaler = StandardScaler()
+        scaled = scaler.fit_transform(aligned)
+        return scaled * scaling_factor
+
     # 1. CodeBERT Embeddings
-    if args.embeddings and args.embeddings.exists():
-        print(f"\n🧠 Loading CodeBERT embeddings from {args.embeddings}...")
-        embeddings = np.load(args.embeddings)
-        print(f"   Loaded embeddings: {embeddings.shape}")
-        
-        from sklearn.preprocessing import StandardScaler
-        scaler_emb = StandardScaler()
-        emb_scaled = scaler_emb.fit_transform(embeddings)
-        current_features.append(emb_scaled * 0.6)
-        struct_weight = 0.4 # Reduce structural weight if embeddings present
-        
+    if args.embeddings:
+        # Use simple file_names list which comes from df['filepath']
+        emb_data = load_and_align_embeddings(args.embeddings, file_names, 0.6)
+        if emb_data is not None:
+            current_features.append(emb_data)
+            struct_weight = 0.4 
+            
     # 2. GNN Embeddings
-    if args.gnn_embeddings and args.gnn_embeddings.exists():
-        print(f"\n🕸️  Loading GNN embeddings from {args.gnn_embeddings}...")
-        gnn_embs = np.load(args.gnn_embeddings)
-        print(f"   Loaded GNN embeddings: {gnn_embs.shape}")
-        
-        from sklearn.preprocessing import StandardScaler
-        scaler_gnn = StandardScaler()
-        gnn_scaled = scaler_gnn.fit_transform(gnn_embs)
-        current_features.append(gnn_scaled * 0.5)
-        # If we have both, structural weight might need further adjustment, 
-        # but 0.4 is a reasonable baseline if CodeBERT is present.
-        
+    if args.gnn_embeddings:
+        gnn_data = load_and_align_embeddings(args.gnn_embeddings, file_names, 0.5)
+        if gnn_data is not None:
+            current_features.append(gnn_data)
+
     # Apply scaling to structural features
     from sklearn.preprocessing import StandardScaler
     current_features[0] = StandardScaler().fit_transform(feature_matrix) * struct_weight
@@ -143,8 +196,7 @@ def main():
     base_rows = current_features[0].shape[0]
     for i, feats in enumerate(current_features[1:], 1):
         if feats.shape[0] != base_rows:
-            print(f"❌ Feature mismatch! Structural has {base_rows} rows, but input #{i} has {feats.shape[0]}")
-            return
+            raise ValueError(f"Feature mismatch! Structural has {base_rows} rows, but input #{i} has {feats.shape[0]}")
 
     # Combine all
     clustering_features = np.hstack(current_features)
@@ -153,12 +205,45 @@ def main():
     # Clustering
     print(f"\n🎯 Clustering with {args.algorithm}...")
     
-    cluster_result = cluster_codes(
-        clustering_features,
-        algorithm=args.algorithm,
-        n_clusters=args.n_clusters,
-        auto_k=(args.n_clusters is None),
-    )
+    from src.clustering.clusterer import CodeClusterer
+    clusterer = CodeClusterer(normalize=False, reduce_dims=True) # Normalize already done
+    
+    # Manually preprocess to get features matching cluster centers
+    # Re-instantiate standard scaler to ensure consistency if clusterer uses it, 
+    # but since we set normalize=False, we trust our manual scaling above.
+    # However, PCA happens inside. We need the PCA-transformed features.
+    
+    # Let's use the clusterer's public API but we need the features it used.
+    # CodeClusterer doesn't expose _preprocess publicly in a way that returns the fitted model easily
+    # unless we check internal state.
+    
+    # Alternative: Do PCA here if needed.
+    pca_features = clustering_features
+    if clustering_features.shape[1] > 50:
+         from sklearn.decomposition import PCA
+         print(f"   Reducing dimensions from {clustering_features.shape[1]} to 50...")
+         pca = PCA(n_components=50)
+         pca_features = pca.fit_transform(clustering_features)
+    
+    # Now use clusterer with reduce_dims=False since we did it.
+    clusterer = CodeClusterer(normalize=False, reduce_dims=False)
+    
+    if args.algorithm == 'kmeans':
+         if args.n_clusters is None:
+             args.n_clusters, _ = clusterer.find_optimal_k(pca_features)
+             print(f"   Optimal k = {args.n_clusters}")
+         cluster_result = clusterer.kmeans(pca_features, n_clusters=args.n_clusters)
+         
+    elif args.algorithm == 'dbscan':
+         cluster_result = clusterer.dbscan(pca_features)
+         
+    elif args.algorithm == 'hierarchical':
+         n = args.n_clusters or 7 # Default
+         cluster_result = clusterer.hierarchical(pca_features, n_clusters=n)
+         
+    # Update clustering_features to match the space used for clustering (PCA space)
+    # This allows analyze_clusters to work correctly with cluster_centers
+    clustering_features = pca_features
     
     print(f"   Found {cluster_result.n_clusters} clusters")
     print(f"   Cluster sizes: {cluster_result.get_cluster_sizes()}")
@@ -213,13 +298,13 @@ def main():
     print(f"\n💾 Saved results to {results_file}")
     
     # Save cluster info
-    summaries = analyze_clusters(cluster_result, feature_matrix, available_features)
+    summaries = analyze_clusters(cluster_result, clustering_features, available_features)
     cluster_info = []
     for s in summaries:
         cluster_info.append({
-            'cluster_id': s.cluster_id,
-            'size': s.size,
-            'percentage': s.percentage,
+            'cluster_id': int(s.cluster_id),
+            'size': int(s.size),
+            'percentage': float(s.percentage),
             'description': s.description,
         })
     

@@ -9,6 +9,11 @@ import argparse
 import sys
 import json
 from pathlib import Path
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 import pandas as pd
 import numpy as np
 
@@ -258,11 +263,18 @@ def main():
                     batch_gnn.append(gnn_emb)
                     batch_gnn_files.append(str(path))
                 except Exception as e:
-                    # If GNN fails for this file, we skip it for GNN output
-                    # but it might still be in features/embeddings
-                    # This is why we need a sidecar file mapping
-                   # logger.warning(f"GNN failed for {path}: {e}")
-                   pass
+                    # Log failure and append zero vector to keep alignment
+                    logger.warning(f"GNN failed for {path}: {e}")
+                    
+                    # Determine dimension for zero vector
+                    dim = 32 # Default CodeGNN output
+                    if batch_gnn:
+                        dim = batch_gnn[0].shape[0]
+                    elif all_gnn_embeddings:
+                         dim = all_gnn_embeddings[0].shape[1]
+                         
+                    batch_gnn.append(np.zeros(dim))
+                    batch_gnn_files.append(str(path))
             
             if batch_gnn:
                 all_gnn_embeddings.append(np.array(batch_gnn))
