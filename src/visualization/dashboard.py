@@ -286,7 +286,10 @@ def run_dashboard():
             # Determine path to read
             file_path_to_read = selected_file
             if 'filepath' in file_info:
-                file_path_to_read = file_info['filepath']
+                path_val = file_info['filepath']
+                # Ensure path is a valid non-empty string (handles NaN/None)
+                if isinstance(path_val, str) and path_val.strip():
+                    file_path_to_read = path_val
 
             # Show actual code if file exists locally
             if Path(file_path_to_read).exists():
@@ -294,7 +297,7 @@ def run_dashboard():
                      code_content = Path(file_path_to_read).read_text(errors='ignore')
                      st.code(code_content, language='python')
                      st.caption(f"Source: {file_path_to_read}")
-                 except Exception as e:
+                 except OSError as e:
                      st.error(f"Error reading file: {e}")
             else:
                  # Demo code fallback
