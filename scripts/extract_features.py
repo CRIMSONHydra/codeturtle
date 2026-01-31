@@ -63,6 +63,10 @@ def main():
     )
     
     args = parser.parse_args()
+
+    if args.batch_size < 1:
+        print(f"❌ Error: --batch-size must be at least 1 (got {args.batch_size})")
+        return
     
     print("\n🐢 CodeTurtle Feature Extraction")
     print("=" * 50)
