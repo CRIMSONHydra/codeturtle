@@ -34,8 +34,8 @@ def verify():
     try:
         onnx_embedder = CodeBERTEmbedder(use_onnx=True)
         onnx_embs = onnx_embedder.get_embeddings_batch(code_snippets, show_progress=False)
-    except Exception as e:
-        print(f"❌ Failed to load ONNX embedder: {e}")
+    except (ImportError, RuntimeError, OSError) as e:
+        logger.exception("❌ Failed to load ONNX embedder")
         return False
 
     # 3. Compare
@@ -51,7 +51,20 @@ def verify():
     for i in range(len(code_snippets)):
         v1 = pt_embs[i]
         v2 = onnx_embs[i]
-        cos_sim = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+        
+        norm1 = np.linalg.norm(v1)
+        norm2 = np.linalg.norm(v2)
+        
+        if norm1 == 0 or norm2 == 0:
+            logger.error(f"❌ Zero norm detected for snippet {i+1}")
+            return False
+            
+        cos_sim = np.dot(v1, v2) / (norm1 * norm2)
+        
+        if not np.isfinite(cos_sim):
+            logger.error(f"❌ Non-finite similarity for snippet {i+1}")
+            return False
+            
         print(f"     Snippet {i+1}: {cos_sim:.6f}")
         
         if cos_sim < 0.999:

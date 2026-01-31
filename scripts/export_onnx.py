@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-def export_model(model_name: str, output_dir: Path, quantize: bool = False):
+def export_model(model_name: str, output_dir: Path, quantize: bool = False, quant_config: str = "avx2"):
     """
     Export model to ONNX format.
     
@@ -54,12 +54,20 @@ def export_model(model_name: str, output_dir: Path, quantize: bool = False):
     
     # 3. Quantization (Optional)
     if quantize:
-        logger.info("   Applying dynamic quantization (int8)...")
+        logger.info(f"   Applying dynamic quantization (int8) targetting {quant_config}...")
         from optimum.onnxruntime.configuration import AutoQuantizationConfig
         from optimum.onnxruntime import ORTQuantizer
         
         quantizer = ORTQuantizer.from_pretrained(model)
-        dqconfig = AutoQuantizationConfig.avx512_vnni(is_static=False, per_channel=False)
+        
+        dqconfig = None
+        if quant_config == "avx512":
+             dqconfig = AutoQuantizationConfig.avx512_vnni(is_static=False, per_channel=False)
+        elif quant_config == "arm64":
+             dqconfig = AutoQuantizationConfig.arm64(is_static=False, per_channel=False)
+        else:
+             # default safest
+             dqconfig = AutoQuantizationConfig.avx2(is_static=False, per_channel=False)
         
         quantized_path = output_dir / "model_quantized.onnx"
         quantizer.quantize(
@@ -90,12 +98,19 @@ def main():
     parser.add_argument(
         "--quantize",
         action="store_true",
-        help="Apply dynamic quantization (smaller size, slightly lower accuracy)"
+        help="Apply dynamic quantization (int8)"
+    )
+    parser.add_argument(
+        "--quantization-config",
+        type=str,
+        default="avx2",
+        choices=["avx2", "avx512", "arm64"],
+        help="Target architecture for quantization (default: avx2)"
     )
     
     args = parser.parse_args()
     
-    export_model(args.model, args.output, args.quantize)
+    export_model(args.model, args.output, args.quantize, args.quantization_config)
 
 
 if __name__ == "__main__":

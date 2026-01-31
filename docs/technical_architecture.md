@@ -43,7 +43,7 @@ We use Transformer-based models to convert code into a **768-dimensional dense v
 -   **Model**: Defaults to `microsoft/unixcoder-base` (or `CodeBERT`). These models are pre-trained on millions of code snippets to understand algorithmic intent.
 -   **ONNX Acceleration**:
     -   We provide an ONNX Export utility (`scripts/export_onnx.py`) to convert models for high-performance inference.
-    -   The `ONNXEmbedder` backend uses `onnxruntime` (CPU/GPU) to bypass PyTorch overhead, delivering significant speedups.
+    -   The `CodeBERTEmbedder` supports ONNX natively via the `use_onnx=True` flag, utilizing `onnxruntime` (CPU/GPU) to bypass PyTorch overhead.
 -   **Vector Store (Caching)**:
     -   We use **ChromaDB** to persist embeddings.
     -   Before processing, the system computes a SHA-256 hash of the code. If the hash exists in the store, the file is skipped, enabling incremental updates.
