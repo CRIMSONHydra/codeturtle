@@ -631,7 +631,7 @@ jupyter = [
 requires-dist = [
     { name = "astor", specifier = ">=0.8.1" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.11.0" },
-    { name = "chromadb", specifier = ">=0.4.0" },
+    { name = "chromadb", specifier = ">=1.4.0,<2.0.0" },
     { name = "gitpython", specifier = ">=3.1.40" },
     { name = "ipykernel", marker = "extra == 'jupyter'", specifier = ">=6.27.0" },
     { name = "isort", marker = "extra == 'dev'", specifier = ">=5.12.0" },

@@ -160,30 +160,63 @@ def main():
 
         # 2. Embeddings
         if embedder:
-            # Filter to only process new/changed files if caching is enabled
-            emb_paths = paths
-            emb_codes = codes
-            
             if vector_store:
+                # 1. Identify what needs to be computed
                 emb_paths, emb_codes, _ = vector_store.filter_new_or_changed(paths, codes)
                 skipped = len(paths) - len(emb_paths)
+                
                 if skipped > 0:
-                    print(f"      ⏭️ Skipped {skipped} cached files")
-            
-            if len(emb_codes) > 0:
+                    print(f"      ⏭️ Retrieved {skipped} cached files")
+                
+                # 2. Compute & Upsert new embeddings
+                if len(emb_codes) > 0:
+                    try:
+                        new_embeddings = embedder.get_embeddings_batch(
+                            emb_codes, 
+                            batch_size=args.batch_size, 
+                            show_progress=False
+                        )
+                        vector_store.add_embeddings(emb_paths, emb_codes, new_embeddings)
+                    except Exception as e:
+                        print(f"   ⚠️ Embedding computation/storage failed: {e}")
+                        # Continue to try retiring existing ones? Or skip batch?
+                        # If computation failed, we might miss these in retrieval.
+                
+                # 3. Retrieve ALL embeddings for this batch (cached + new)
+                # This ensures output matches the input file list perfectly
+                try:
+                    batch_full_paths = [str(p) for p in paths]
+                    retrieved = vector_store.get_embeddings(batch_full_paths)
+                    
+                    # Convert to numpy, handling potential missing ones (if computation failed)
+                    valid_batch_embeddings = []
+                    valid_batch_files = []
+                    
+                    for i, emb in enumerate(retrieved):
+                        if emb is not None:
+                            valid_batch_embeddings.append(emb)
+                            valid_batch_files.append(batch_full_paths[i])
+                        else:
+                            # This implies computation failed for this file
+                            pass
+                            
+                    if valid_batch_embeddings:
+                        all_embeddings.append(np.array(valid_batch_embeddings))
+                        embedding_files.extend(valid_batch_files)
+                        
+                except Exception as e:
+                    print(f"   ⚠️ Cache retrieval failed: {e}")
+
+            else:
+                # No Caching - Standard Stream
                 try:
                     batch_embeddings = embedder.get_embeddings_batch(
-                        emb_codes, 
+                        codes, 
                         batch_size=args.batch_size, 
                         show_progress=False
                     )
-                    
-                    # Save to cache if enabled
-                    if vector_store:
-                        vector_store.add_embeddings(emb_paths, emb_codes, batch_embeddings)
-                    
                     all_embeddings.append(batch_embeddings)
-                    embedding_files.extend([str(p) for p in emb_paths])
+                    embedding_files.extend([str(p) for p in paths])
                     
                 except Exception as e:
                     print(f"   ⚠️ Embedding batch failed: {e}")

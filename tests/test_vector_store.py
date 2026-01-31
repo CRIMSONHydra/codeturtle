@@ -78,6 +78,44 @@ class TestCodeVectorStore:
         assert str(files[0]) in cached
         assert cached[str(files[0])] == compute_code_hash(codes[0])
     
+    def test_get_all_embeddings_empty_shape(self, temp_store):
+        """Test retrieving all embeddings from empty store returns correct shape."""
+        # By default embedding_dim is imported from settings (768), but we can override for test if needed.
+        # But here we rely on the default.
+        files, embs = temp_store.get_all_embeddings()
+        
+        assert len(files) == 0
+        assert embs.shape == (0, temp_store.embedding_dim)
+        # Ensure it's 2D even if empty
+        assert len(embs.shape) == 2
+
+    def test_get_embeddings(self, temp_store, sample_data):
+        """Test retrieving specific embeddings."""
+        files, codes, embeddings = sample_data
+        
+        temp_store.add_embeddings(files, codes, embeddings)
+        
+        # Retrieve subset
+        target_files = [str(files[0]), str(files[2])]
+        retrieved = temp_store.get_embeddings(target_files)
+        
+        assert len(retrieved) == 2
+        assert np.array_equal(retrieved[0], embeddings[0])
+        assert np.array_equal(retrieved[1], embeddings[2])
+        
+    def test_get_embeddings_missing(self, temp_store, sample_data):
+        """Test retrieving non-existent embeddings."""
+        files, codes, embeddings = sample_data
+        
+        temp_store.add_embeddings(files[:1], codes[:1], embeddings[:1])
+        
+        target_files = [str(files[0]), "/fake/missing.py"]
+        retrieved = temp_store.get_embeddings(target_files)
+        
+        assert len(retrieved) == 2
+        assert np.array_equal(retrieved[0], embeddings[0])
+        assert retrieved[1] is None
+
     def test_filter_new_files(self, temp_store, sample_data):
         """Test filtering identifies new files."""
         files, codes, embeddings = sample_data

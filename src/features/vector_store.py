@@ -11,6 +11,11 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 import numpy as np
 
+# Import embedding dimension for shape safety
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from config.settings import EMBEDDING_DIMENSION
+
 logger = logging.getLogger(__name__)
 
 # Lazy import for chromadb
@@ -53,6 +58,7 @@ class CodeVectorStore:
         self,
         persist_directory: Path,
         collection_name: str = "code_embeddings",
+        embedding_dim: int = EMBEDDING_DIMENSION,
     ):
         """
         Initialize the vector store.
@@ -60,9 +66,11 @@ class CodeVectorStore:
         Args:
             persist_directory: Directory to persist ChromaDB data
             collection_name: Name of the collection to use
+            embedding_dim: Dimension of embeddings (default: from settings)
         """
         self.persist_directory = Path(persist_directory)
         self.collection_name = collection_name
+        self.embedding_dim = embedding_dim
         self._client = None
         self._collection = None
         
@@ -204,6 +212,39 @@ class CodeVectorStore:
         logger.info(f"Stored {len(ids)} embeddings")
         return len(ids)
     
+    def get_embeddings(self, filepaths: List[str]) -> List[Optional[np.ndarray]]:
+        """
+        Retrieve embeddings for specific files.
+        
+        Args:
+            filepaths: List of file paths to retrieve
+            
+        Returns:
+            List of embeddings (or None if not found), in same order as input
+        """
+        self._initialize()
+        
+        if not filepaths:
+            return []
+            
+        # ChromaDB .get(ids=...) returns results in arbitrary order, 
+        # so we need to reorder them manually.
+        results = self._collection.get(ids=filepaths, include=["embeddings"])
+        
+        # Map ID -> Embedding
+        id_to_emb = {}
+        if results["ids"]:
+            for id_, emb in zip(results["ids"], results["embeddings"]):
+                if emb is not None:
+                    id_to_emb[id_] = np.array(emb)
+        
+        # Reconstruct list in requested order
+        ordered_embeddings = []
+        for fp in filepaths:
+            ordered_embeddings.append(id_to_emb.get(fp))
+            
+        return ordered_embeddings
+
     def get_all_embeddings(self) -> Tuple[List[str], np.ndarray]:
         """
         Retrieve all stored embeddings.
@@ -216,7 +257,7 @@ class CodeVectorStore:
         results = self._collection.get(include=["embeddings", "metadatas"])
         
         if not results["ids"]:
-            return [], np.array([])
+            return [], np.zeros((0, self.embedding_dim))
         
         filepaths = []
         embeddings = []
