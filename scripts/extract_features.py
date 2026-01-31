@@ -72,6 +72,11 @@ def main():
         action='store_true',
         help='Clear the embedding cache before processing'
     )
+    parser.add_argument(
+        '--onnx',
+        action='store_true',
+        help='Use ONNX Runtime for accelerated inference'
+    )
     
     args = parser.parse_args()
 
@@ -97,7 +102,7 @@ def main():
         print("\n🧠 Initializing CodeBERT model...")
         try:
             from src.features import CodeBERTEmbedder
-            embedder = CodeBERTEmbedder()
+            embedder = CodeBERTEmbedder(use_onnx=args.onnx)
         except ImportError as e:
             print(f"⚠️ Could not load embeddings module: {e}")
             print("   Run: uv pip install transformers torch")

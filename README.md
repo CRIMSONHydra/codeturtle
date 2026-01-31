@@ -9,6 +9,8 @@ CodeTurtle is an ML-powered system that analyzes GitHub Python code to discover 
 ## ✨ Features
 
 - **⚡ Optimized Processing**: Generators and batch processing for constant RAM usage
+- **🚀 ONNX Acceleration**: Up to 3x faster inference using optimized ONNX Runtime
+- **💾 Smart Caching**: Integrated ChromaDB vector store skips analysis of unchanged files
 - **📊 Pattern Discovery**: Cluster similar code patterns using K-Means, DBSCAN, or Hierarchical clustering
 - **🔍 Risk Detection**: Rule-based static analysis + ML anomaly detection
 - **🧠 Code Embeddings**: GPU-accelerated CodeBERT/UniXcoder embeddings
@@ -46,7 +48,11 @@ uv pip install torch --index-url https://download.pytorch.org/whl/cu121
 python scripts/collect_data.py --limit 3
 
 # 2. Extract features
-python scripts/extract_features.py --clean
+# 2. Extract features (with ONNX acceleration & caching)
+# Prerequisite: Export model first
+python scripts/export_onnx.py
+
+python scripts/extract_features.py --clean --onnx --cache
 
 # 3. Run analysis
 python scripts/run_analysis.py --visualize --report
