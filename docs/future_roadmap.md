@@ -16,8 +16,9 @@ Ideas for extending CodeTurtle and optimizing its performance.
 
 ## 🧠 Model Improvements
 
-1.  **Graph Neural Networks (GNNs)**:
-    -   Instead of just counting AST nodes (`structural.py`), convert the AST into a graph and run a GNN (like GCN or GAT). This captures the *structure* of data flow much better than simple counts.
+1.  **Graph Neural Networks (GNNs)** (✅ Completed):
+    -   Implemented a Graph Neural Network (GNN) to capture the *structure* of data flow much better than simple counts.
+    -   Files: `src/features/gnn.py`, `graph_converter.py`.
 2.  **Contrastive Fine-Tuning**:
     -   Fine-tune CodeBERT on the specific target dataset using contrastive loss (SimCLR) to force the model to separate "clean" and "messy" code further apart.
 3.  **LLM Integration**:

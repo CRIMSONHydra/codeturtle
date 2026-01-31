@@ -77,6 +77,11 @@ def main():
         action='store_true',
         help='Use ONNX Runtime for accelerated inference'
     )
+    parser.add_argument(
+        '--gnn',
+        action='store_true',
+        help='Generate GNN structural embeddings (requires trained GNN model)'
+    )
     
     args = parser.parse_args()
 
@@ -108,6 +113,20 @@ def main():
             print("   Run: uv pip install transformers torch")
             return
 
+    # Initialize GNN if needed
+    gnn_embedder = None
+    if args.gnn:
+        print("\n🕸️  Initializing GNN model...")
+        try:
+            from src.features.gnn import GNNEmbedder
+            gnn_embedder = GNNEmbedder(use_gpu=args.onnx or args.embeddings) # Reuse GPU flag logic
+            if not gnn_embedder._has_model:
+                print("   ⚠️  GNN model not found or failed to load. Skipping GNN.")
+                gnn_embedder = None
+        except ImportError as e:
+            print(f"⚠️ Could not load GNN module: {e}")
+            gnn_embedder = None
+
     # Initialize vector store if caching is enabled
     vector_store = None
     if args.cache and args.embeddings:
@@ -128,6 +147,7 @@ def main():
     all_features = []
     all_embeddings = []
     embedding_files = []
+    all_gnn_embeddings = []
     failed_count = 0
     total_processed = 0
     
@@ -226,6 +246,18 @@ def main():
                 except Exception as e:
                     print(f"   ⚠️ Embedding batch failed: {e}")
                 
+        # 3. GNN Embeddings
+        if gnn_embedder:
+            batch_gnn = []
+            for code in codes:
+                try:
+                    # TODO: Batch this? Currently one-by-one in GNNEmbedder
+                    gnn_emb = gnn_embedder.get_embedding(code)
+                    batch_gnn.append(gnn_emb)
+                except Exception as e:
+                    batch_gnn.append(np.zeros(32))
+            all_gnn_embeddings.append(np.array(batch_gnn))
+                
         total_processed += len(codes)
 
     print(f"✅ Successfully extracted features from {len(all_features)} files")
@@ -261,6 +293,14 @@ def main():
             
         print(f"\n💾 Saved embeddings to {emb_output}")
         print(f"   Shape: {final_embeddings.shape}")
+
+    # Save GNN Embeddings
+    if all_gnn_embeddings:
+        final_gnn = np.vstack(all_gnn_embeddings)
+        gnn_output = args.output.parent / 'gnn_embeddings.npy'
+        np.save(gnn_output, final_gnn)
+        print(f"\n💾 Saved GNN embeddings to {gnn_output}")
+        print(f"   Shape: {final_gnn.shape}")
 
     print("\n🎉 Feature extraction complete!")
 

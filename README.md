@@ -14,6 +14,7 @@ CodeTurtle is an ML-powered system that analyzes GitHub Python code to discover 
 - **📊 Pattern Discovery**: Cluster similar code patterns using K-Means, DBSCAN, or Hierarchical clustering
 - **🔍 Risk Detection**: Rule-based static analysis + ML anomaly detection
 - **🧠 Code Embeddings**: GPU-accelerated CodeBERT/UniXcoder embeddings
+- **🕸️ Graph Neural Networks**: Learn deep structural embeddings from AST graphs using GCNs
 - **📈 Visualizations**: t-SNE/PCA cluster plots, risk heatmaps, feature importance
 - **🖥️ Interactive Dashboard**: Streamlit web interface for exploration
 
@@ -53,6 +54,12 @@ python scripts/collect_data.py --limit 3
 python scripts/export_onnx.py
 
 python scripts/extract_features.py --clean --onnx --cache
+
+# (Optional) Use GNN for deep structural analysis
+# Train model first:
+uv run python scripts/train_gnn.py --epochs 20
+# Extract with GNN:
+uv run python scripts/extract_features.py --clean --gnn
 
 # 3. Run analysis
 python scripts/run_analysis.py --visualize --report

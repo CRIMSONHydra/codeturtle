@@ -58,6 +58,18 @@ uv run python scripts/extract_features.py --clean --embeddings --cache --onnx
 ```
 *Use `--clear-cache` to reset the embedding cache.*
 
+*Use `--clear-cache` to reset the embedding cache.*
+
+**With Graph Neural Networks (Deep Structural Analysis):**
+Capture complex structural patterns (like recursive logic flow) using a GNN.
+```bash
+# 1. Train the GNN on your collected data (Self-Supervised)
+uv run python scripts/train_gnn.py --epochs 20
+
+# 2. Extract features using the trained model
+uv run python scripts/extract_features.py --clean --gnn
+```
+
 ---
 
 ## Step 3: Analysis & Pattern Discovery

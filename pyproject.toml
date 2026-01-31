@@ -43,6 +43,10 @@ dependencies = [
     "optimum[onnxruntime]>=1.16.0",
     "onnx>=1.15.0",
     "onnxruntime>=1.16.0",
+    
+    # GNN (Graph Neural Networks)
+    "torch_geometric>=2.5.0",
+    "networkx>=3.0",
 ]
 
 [project.optional-dependencies]

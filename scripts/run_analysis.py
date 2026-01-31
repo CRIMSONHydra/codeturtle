@@ -43,6 +43,12 @@ def main():
         help='Optional embeddings file (.npy)'
     )
     parser.add_argument(
+        '--gnn-embeddings',
+        type=Path,
+        default=None,
+        help='Optional GNN structural embeddings file (.npy)'
+    )
+    parser.add_argument(
         '--algorithm',
         choices=['kmeans', 'dbscan', 'hierarchical'],
         default='kmeans',
@@ -101,27 +107,39 @@ def main():
     print(f"   Using {len(available_features)} features for clustering")
     
     # Load embeddings if provided
+    current_features = [feature_matrix]
+    
     if args.embeddings and args.embeddings.exists():
-        print(f"\n🧠 Loading embeddings from {args.embeddings}...")
+        print(f"\n🧠 Loading CodeBERT embeddings from {args.embeddings}...")
         embeddings = np.load(args.embeddings)
         print(f"   Loaded embeddings: {embeddings.shape}")
         
-        # Combine structural features with embeddings
-        # Weight structural features higher since they're more interpretable
+    if args.embeddings and args.embeddings.exists():
+        print(f"\n🧠 Loading CodeBERT embeddings from {args.embeddings}...")
+        embeddings = np.load(args.embeddings)
+        print(f"   Loaded embeddings: {embeddings.shape}")
+        
         from sklearn.preprocessing import StandardScaler
+        scaler_emb = StandardScaler()
+        emb_scaled = scaler_emb.fit_transform(embeddings)
+        current_features.append(emb_scaled * 0.6) # Weight for CodeBERT
         
-        scaler1 = StandardScaler()
-        scaler2 = StandardScaler()
+        # Adjust structural weight if we have embeddings
+        current_features[0] = StandardScaler().fit_transform(feature_matrix) * 0.4
         
-        struct_scaled = scaler1.fit_transform(feature_matrix)
-        emb_scaled = scaler2.fit_transform(embeddings)
+    if args.gnn_embeddings and args.gnn_embeddings.exists():
+        print(f"\n🕸️  Loading GNN embeddings from {args.gnn_embeddings}...")
+        gnn_embs = np.load(args.gnn_embeddings)
+        print(f"   Loaded GNN embeddings: {gnn_embs.shape}")
         
-        # Combine with weights
-        combined = np.hstack([struct_scaled * 0.4, emb_scaled * 0.6])
-        clustering_features = combined
-        print(f"   Combined feature matrix: {clustering_features.shape}")
-    else:
-        clustering_features = feature_matrix
+        from sklearn.preprocessing import StandardScaler
+        scaler_gnn = StandardScaler()
+        gnn_scaled = scaler_gnn.fit_transform(gnn_embs)
+        current_features.append(gnn_scaled * 0.5) # Weight for GNN
+        
+    # Combine all
+    clustering_features = np.hstack(current_features) if len(current_features) > 1 else feature_matrix
+    print(f"   Combined feature matrix: {clustering_features.shape}")
     
     # Clustering
     print(f"\n🎯 Clustering with {args.algorithm}...")
