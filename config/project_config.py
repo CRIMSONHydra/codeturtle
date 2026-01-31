@@ -64,15 +64,25 @@ def load_config(config_path: Optional[Path] = None) -> ProjectConfig:
         ProjectConfig with loaded or default values
     """
     if config_path is None:
-        # Search for config file
-        search_paths = [
-            Path.cwd() / "codeturtle.yaml",
-            Path.cwd() / ".codeturtle.yaml",
-            Path.cwd() / "codeturtle.yml",
-        ]
-        for path in search_paths:
-            if path.exists():
-                config_path = path
+        # Search for config file in current and parent directories
+        current_dir = Path.cwd()
+        # Traverse up to root
+        search_dirs = [current_dir] + list(current_dir.parents)
+        
+        for directory in search_dirs:
+            # Check for standard config names
+            search_paths = [
+                directory / "codeturtle.yaml",
+                directory / ".codeturtle.yaml",
+                directory / "codeturtle.yml",
+            ]
+            
+            for path in search_paths:
+                if path.exists():
+                    config_path = path
+                    break
+            
+            if config_path:
                 break
     
     if config_path is None or not config_path.exists():
@@ -129,7 +139,7 @@ def load_config(config_path: Optional[Path] = None) -> ProjectConfig:
             ]),
         )
         
-    except Exception as e:
+    except (OSError, TypeError, ValueError, yaml.YAMLError) as e:
         logger.warning(f"Failed to load config: {e}, using defaults")
         return ProjectConfig()
 
@@ -150,7 +160,8 @@ def save_default_config(output_path: Path) -> Path:
 # Feature extraction settings
 extraction:
   batch_size: 32
-  parallel_workers: -1    # -1 = auto-detect, 0 = sequential
+  batch_size: 32
+  parallel_workers: 0     # 0 = sequential (default), -1 = auto-detect
   use_onnx: true          # Use ONNX for faster embeddings
   use_gnn: false          # Enable GNN structural embeddings
   use_cache: true         # Cache embeddings for incremental updates

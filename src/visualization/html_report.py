@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import html
 
 import pandas as pd
 import numpy as np
@@ -26,6 +27,7 @@ def generate_html_report(
     df: pd.DataFrame,
     cluster_info: List[Dict],
     output_path: Path,
+    output_path: Path,
     title: str = "CodeTurtle Analysis Report",
     include_plots: bool = True,
 ) -> Path:
@@ -42,6 +44,7 @@ def generate_html_report(
     Returns:
         Path to generated HTML file
     """
+    title = html.escape(title)
     output_path = Path(output_path)
     output_path.mkdir(parents=True, exist_ok=True)
     
@@ -65,17 +68,30 @@ def generate_html_report(
     high_risk = (df['risk_score'] >= 60).sum() if 'risk_score' in df.columns else 0
     
     # Top risky files
+    # Top risky files
     top_risky = []
     if 'risk_score' in df.columns and 'filename' in df.columns:
-        top_risky = df.nlargest(10, 'risk_score')[['filename', 'risk_score', 'cluster']].to_dict('records')
+        cols_to_select = ['filename', 'risk_score']
+        if 'cluster' in df.columns:
+            cols_to_select.append('cluster')
+            
+        top_risky = df.nlargest(10, 'risk_score')[cols_to_select].to_dict('records')
+        
+        # Ensure 'cluster' key exists if missing from DF
+        if 'cluster' not in df.columns:
+            for r in top_risky:
+                r['cluster'] = 'N/A'
     
     # Cluster summary
     cluster_html = ""
     for c in cluster_info:
+        c_id = html.escape(str(c.get('cluster_id', 'N/A')))
+        c_desc = html.escape(str(c.get('description', 'No description')))
+        
         cluster_html += f"""
         <div class="cluster-card">
-            <h4>Cluster {c.get('cluster_id', 'N/A')}</h4>
-            <p class="cluster-desc">{c.get('description', 'No description')}</p>
+            <h4>Cluster {c_id}</h4>
+            <p class="cluster-desc">{c_desc}</p>
             <div class="cluster-stats">
                 <span class="stat">{c.get('size', 0)} files</span>
                 <span class="stat">{c.get('percentage', 0):.1f}%</span>
@@ -87,11 +103,14 @@ def generate_html_report(
     risk_rows = ""
     for r in top_risky:
         risk_class = "high-risk" if r.get('risk_score', 0) >= 60 else "medium-risk" if r.get('risk_score', 0) >= 30 else "low-risk"
+        r_filename = html.escape(str(r.get('filename', 'Unknown')))
+        r_cluster = html.escape(str(r.get('cluster', 'N/A')))
+        
         risk_rows += f"""
         <tr class="{risk_class}">
-            <td>{r.get('filename', 'Unknown')}</td>
+            <td>{r_filename}</td>
             <td>{r.get('risk_score', 0):.1f}</td>
-            <td>{r.get('cluster', 'N/A')}</td>
+            <td>{r_cluster}</td>
         </tr>
         """
     

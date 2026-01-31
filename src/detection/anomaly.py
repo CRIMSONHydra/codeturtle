@@ -212,17 +212,13 @@ class EnsembleAnomalyDetector:
         self.voting = voting
         self.scaler = StandardScaler()
         self._is_fitted = False
+        self.lof = None  # Instantiated in fit_predict based on data size
         
         # Models
         self.isolation_forest = IsolationForest(
             contamination=contamination,
             random_state=42,
             n_estimators=100,
-        )
-        self.lof = LocalOutlierFactor(
-            n_neighbors=20,
-            contamination=contamination,
-            novelty=False,  # Use fit_predict mode
         )
     
     def fit_predict(self, features: np.ndarray) -> AnomalyReport:
@@ -236,6 +232,18 @@ class EnsembleAnomalyDetector:
             AnomalyReport with ensemble predictions
         """
         X = self.scaler.fit_transform(features)
+        n_samples = X.shape[0]
+        
+        if n_samples < 2:
+            raise ValueError(f"Ensemble detection requires at least 2 samples, got {n_samples}")
+            
+        # Initialize LOF with dynamic neighbors
+        n_neighbors = min(20, n_samples - 1)
+        self.lof = LocalOutlierFactor(
+            n_neighbors=n_neighbors,
+            contamination=self.contamination,
+            novelty=False,
+        )
         
         # Get predictions from each model
         if_pred = self.isolation_forest.fit_predict(X)  # -1 = anomaly, 1 = normal

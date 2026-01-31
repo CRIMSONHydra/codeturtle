@@ -96,6 +96,24 @@ def main():
         help='Path to codeturtle.yaml config file'
     )
     
+    
+    # 1. Parse known args to check for config file
+    temp_args, _ = parser.parse_known_args()
+    
+    # 2. Load config
+    config = load_config(temp_args.config)
+    
+    # 3. Apply config values as defaults
+    parser.set_defaults(
+        algorithm=config.algorithm,
+        n_clusters=config.n_clusters,
+        anomaly_algorithm=config.anomaly_algorithm,
+        output=Path(config.output_dir),
+        visualize=config.generate_plots,
+        html=config.generate_html,
+    )
+    
+    # 4. Final parse to allow CLI overrides
     args = parser.parse_args()
     
     print("\n🐢 CodeTurtle Analysis Pipeline")
@@ -322,7 +340,7 @@ def main():
     
     anomaly_report = detect_anomalies(
         feature_matrix, 
-        contamination=0.1,
+        contamination=config.contamination,
         algorithm=args.anomaly_algorithm
     )
     df['is_anomaly'] = anomaly_report.results
@@ -386,6 +404,11 @@ def main():
     # Generate HTML report
     if args.html:
         print("\n📄 Generating HTML report...")
+        # Ensure filename column exists for the report generator
+        if 'filename' not in df.columns and 'filepath' in df.columns:
+            # Create simple filename from filepath
+            df['filename'] = df['filepath'].apply(lambda x: Path(str(x)).name)
+            
         html_path = generate_html_report(
             df=df,
             cluster_info=cluster_info,
