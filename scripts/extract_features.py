@@ -10,12 +10,15 @@ import sys
 import json
 from pathlib import Path
 import logging
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -27,6 +30,27 @@ from config.settings import OUTPUTS_DIR, RAW_DATA_DIR
 
 from src.utils import batch_generator
 from src.features.vector_store import CodeVectorStore, compute_code_hash
+
+
+def _extract_single_file(args_tuple):
+    """Helper function for parallel extraction. Must be at module level for pickling."""
+    path, code, do_clean = args_tuple
+    try:
+        if do_clean:
+            try:
+                code = clean_code(code)
+            except Exception:
+                pass  # Use original if clean fails
+        
+        features = extract_structural_features(code)
+        if features:
+            row = features.to_dict()
+            row['filepath'] = str(path)
+            row['filename'] = path.name
+            return ('ok', row)
+        return ('fail', str(path))
+    except Exception as e:
+        return ('fail', str(path))
 
 
 def main():
@@ -86,6 +110,12 @@ def main():
         '--gnn',
         action='store_true',
         help='Generate GNN structural embeddings (requires trained GNN model)'
+    )
+    parser.add_argument(
+        '--parallel',
+        type=int,
+        default=0,
+        help='Number of parallel workers for structural features (0=sequential, -1=auto)'
     )
     
     args = parser.parse_args()
@@ -160,34 +190,50 @@ def main():
     # Iterate through batches
     num_batches = (len(files) + args.batch_size - 1) // args.batch_size
     
-    for i, (paths, codes) in enumerate(batch_generator(files, args.batch_size)):
-        print(f"  Batch {i+1}/{num_batches} ({len(codes)} files)...")
+    for i, (paths, codes) in enumerate(tqdm(
+        batch_generator(files, args.batch_size),
+        total=num_batches,
+        desc="Processing batches",
+        unit="batch"
+    )):
         
-        # Clean code if requested
-        if args.clean:
-            cleaned_codes = []
-            for code in codes:
+        # 1. Structural Features (with optional parallel processing)
+        n_workers = args.parallel
+        if n_workers == -1:
+            n_workers = max(1, multiprocessing.cpu_count() - 1)
+        
+        if n_workers > 0:
+            # Parallel extraction
+            tasks = [(p, c, args.clean) for p, c in zip(paths, codes)]
+            with ProcessPoolExecutor(max_workers=n_workers) as executor:
+                for result in executor.map(_extract_single_file, tasks):
+                    if result[0] == 'ok':
+                        all_features.append(result[1])
+                    else:
+                        failed_count += 1
+        else:
+            # Sequential extraction (original behavior)
+            if args.clean:
+                cleaned_codes = []
+                for code in codes:
+                    try:
+                        cleaned_codes.append(clean_code(code))
+                    except Exception as e:
+                        cleaned_codes.append(code)
+                codes = cleaned_codes
+                
+            for path, code in zip(paths, codes, strict=True):
                 try:
-                    cleaned_codes.append(clean_code(code))
+                    features = extract_structural_features(code)
+                    if features:
+                        row = features.to_dict()
+                        row['filepath'] = str(path)
+                        row['filename'] = path.name
+                        all_features.append(row)
+                    else:
+                        failed_count += 1
                 except Exception as e:
-                    print(f"   ⚠️ Failed to clean code: {e}")
-                    cleaned_codes.append(code) # Fallback to raw if clean fails
-            codes = cleaned_codes
-            
-        # 1. Structural Features
-        for path, code in zip(paths, codes, strict=True):
-            try:
-                features = extract_structural_features(code)
-                if features:
-                    row = features.to_dict()
-                    row['filepath'] = str(path)
-                    row['filename'] = path.name
-                    all_features.append(row)
-                else:
                     failed_count += 1
-            except Exception as e:
-                # logger.warning(f"Feature extraction failed for {path}: {e}")
-                failed_count += 1
 
         # 2. Embeddings
         if embedder:

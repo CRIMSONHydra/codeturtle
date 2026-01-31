@@ -75,10 +75,13 @@ def analyze_clusters(
             feature_stds = {f"f{i}": v for i, v in enumerate(stds)}
         
         # Find representative samples (closest to centroid)
-        if result.cluster_centers is not None:
+        # Note: cluster_centers may be in different space (e.g., PCA-reduced)
+        # than the features passed for labeling. Handle gracefully.
+        if result.cluster_centers is not None and result.cluster_centers.shape[1] == cluster_features.shape[1]:
             centroid = result.cluster_centers[cluster_id]
             distances = np.linalg.norm(cluster_features - centroid, axis=1)
         else:
+            # Use cluster mean as centroid if official centers don't match dimensions
             centroid = means
             distances = np.linalg.norm(cluster_features - centroid, axis=1)
         
