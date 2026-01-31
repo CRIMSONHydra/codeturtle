@@ -192,13 +192,13 @@ def main():
                     valid_batch_embeddings = []
                     valid_batch_files = []
                     
-                    for i, emb in enumerate(retrieved):
+                    for idx, emb in enumerate(retrieved):
                         if emb is not None:
                             valid_batch_embeddings.append(emb)
-                            valid_batch_files.append(batch_full_paths[i])
+                            valid_batch_files.append(batch_full_paths[idx])
                         else:
                             # This implies computation failed for this file
-                            pass
+                            print(f"      ⚠️ Failed to retrieve embedding for {batch_full_paths[idx]}")
                             
                     if valid_batch_embeddings:
                         all_embeddings.append(np.array(valid_batch_embeddings))
