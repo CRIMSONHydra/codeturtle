@@ -67,7 +67,7 @@ def reduce_dimensions(
         tsne = TSNE(
             n_components=n_components,
             perplexity=perplexity,
-            n_iter=TSNE_N_ITER,
+            max_iter=TSNE_N_ITER,  # Renamed from n_iter in sklearn 1.5+
             random_state=42,
         )
         reduced = tsne.fit_transform(features)

@@ -112,12 +112,36 @@ class CodeBERTEmbedder:
         if self.use_onnx:
             logger.info(f"Loading ONNX model from: {self.onnx_path}")
             try:
+                import onnxruntime as ort
                 from optimum.onnxruntime import ORTModelForFeatureExtraction
+                
+                # Check which providers are actually available
+                available_providers = ort.get_available_providers()
+                logger.debug(f"Available ONNX providers: {available_providers}")
+                
+                # Determine the best available provider
+                if "CUDAExecutionProvider" in available_providers and self.use_gpu:
+                    selected_provider = "CUDAExecutionProvider"
+                    logger.info("Using ONNX with CUDA acceleration")
+                elif "CPUExecutionProvider" in available_providers:
+                    selected_provider = "CPUExecutionProvider"
+                    if self.use_gpu:
+                        logger.warning("CUDAExecutionProvider not available, falling back to CPU")
+                    else:
+                        logger.info("Using ONNX with CPU")
+                else:
+                    # Fallback to first available (e.g., AzureExecutionProvider)
+                    selected_provider = available_providers[0] if available_providers else None
+                    logger.warning(f"Using fallback provider: {selected_provider}")
+                    
+                if selected_provider is None:
+                    raise RuntimeError("No ONNX execution providers available")
+                    
                 self.model = ORTModelForFeatureExtraction.from_pretrained(
                     self.onnx_path,
-                    provider=self.provider
+                    provider=selected_provider
                 )
-                logger.info(f"ONNX Model loaded with provider: {self.provider}")
+                logger.info(f"ONNX Model loaded with provider: {selected_provider}")
             except ImportError:
                 raise ImportError("optimum[onnxruntime] required. Run: uv sync --all-extras")
             except Exception as e:
