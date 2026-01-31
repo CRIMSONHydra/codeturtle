@@ -93,31 +93,27 @@ class TestEmbedderFallback:
                 embedder.converter = MagicMock()
                 embedder.converter.code_to_graph.return_value = mock_data
                 
-                # Mock model to fail first, then succeed
+                # Mock model to fail 
                 mock_model = MagicMock()
-                
-                def model_side_effect(*args):
-                    # Check the device of the embedder or inputs
-                    # Implementation detail: embedder tries .to(device)
-                    # We simulate failure when it's on CUDA
-                    if embedder.device.type == 'cuda':
-                        raise RuntimeError("CUDA error: illegal memory access")
-                    # Second call (CPU) -> Succeed
-                    return (torch.tensor([0]), torch.randn(1, 32))
-                    
-                mock_model.side_effect = model_side_effect
-                # Ensure .to() returns the same mock so call counts are preserved
+                # Fail first (CUDA), succeed second (CPU)
+                mock_model.side_effect = [RuntimeError("CUDA error: illegal memory access"), (torch.tensor([0]), torch.randn(1, 32))]
+                # Ensure .to() returns the same mock
                 mock_model.to.return_value = mock_model
-                
+
                 embedder.model = mock_model
-                # Wire the CodeGNN constructor to return our mock model for the fallback path
                 mock_codegnn.return_value = mock_model
-                # Important: Set check flag to True since we injected a model
                 embedder._has_model = True
-                embedder.device = torch.device('cuda')
                 
-                # Execute
-                embedding = embedder.get_embedding("x = 1")
+                # We interpret device='cuda' literally which might fail on github runners
+                # So we must mock torch.zeros and torch.cuda used in the method
+                with patch('src.features.gnn.torch.zeros') as mock_zeros, \
+                     patch('src.features.gnn.torch.cuda') as mock_cuda:
+                    
+                    mock_zeros.return_value = torch.zeros(5) # Dummy tensor
+                    embedder.device = torch.device('cuda') # Logic uses this
+                    
+                    # Execute
+                    embedding = embedder.get_embedding("x = 1")
                 
                 # Verify
                 assert embedding.shape == (32,)
