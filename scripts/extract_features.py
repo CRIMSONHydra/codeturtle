@@ -197,37 +197,44 @@ def main():
     # Iterate through batches
     num_batches = (len(files) + args.batch_size - 1) // args.batch_size
     
-    for i, (paths, codes) in enumerate(tqdm(
-        batch_generator(files, args.batch_size),
-        total=num_batches,
-        desc="Processing batches",
-        unit="batch"
-    )):
-        
-        # 1. Structural Features (with optional parallel processing)
-        n_workers = args.parallel
-        if n_workers == -1:
-            n_workers = max(1, multiprocessing.cpu_count() - 1)
-        
-        if n_workers > 0:
-            # Parallel extraction
-            tasks = [(p, c, args.clean) for p, c in zip(paths, codes)]
-            with ProcessPoolExecutor(max_workers=n_workers) as executor:
+    # Initialize parallel executor once if needed
+    n_workers = args.parallel
+    if n_workers == -1:
+        n_workers = max(1, multiprocessing.cpu_count() - 1)
+    
+    executor = None
+    if n_workers > 0:
+        executor = ProcessPoolExecutor(max_workers=n_workers)
+        print(f"🚀 Using {n_workers} workers for structural extraction")
+
+    try:
+        for i, (paths, codes) in enumerate(tqdm(
+            batch_generator(files, args.batch_size),
+            total=num_batches,
+            desc="Processing batches",
+            unit="batch"
+        )):
+            
+            # 1. Structural Features (with optional parallel processing)
+            if executor:
+                # Parallel extraction
+                tasks = [(p, c, args.clean) for p, c in zip(paths, codes)]
+                # Using map directly on the existing executor
                 for result in executor.map(_extract_single_file, tasks):
                     if result[0] == 'ok':
                         all_features.append(result[1])
                     else:
                         failed_count += 1
-        else:
-            # Sequential extraction (original behavior)
-            if args.clean:
-                cleaned_codes = []
-                for code in codes:
-                    try:
-                        cleaned_codes.append(clean_code(code))
-                    except Exception as e:
-                        cleaned_codes.append(code)
-                codes = cleaned_codes
+            else:
+                # Sequential extraction (original behavior)
+                if args.clean:
+                    cleaned_codes = []
+                    for code in codes:
+                        try:
+                            cleaned_codes.append(clean_code(code))
+                        except Exception as e:
+                            cleaned_codes.append(code)
+                    codes = cleaned_codes
                 
             for path, code in zip(paths, codes, strict=True):
                 try:
@@ -334,6 +341,10 @@ def main():
                 gnn_files.extend(batch_gnn_files)
                 
         total_processed += len(codes)
+    finally:
+        if executor:
+            executor.shutdown()
+            print("\n🛑 Parallel executor shut down")
 
     print(f"✅ Successfully extracted features from {len(all_features)} files")
     if failed_count:
