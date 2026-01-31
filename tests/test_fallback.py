@@ -107,6 +107,8 @@ class TestEmbedderFallback:
                     
                 mock_model.side_effect = model_side_effect
                 embedder.model = mock_model
+                # Important: Set check flag to True since we injected a model
+                embedder._has_model = True
                 embedder.device = torch.device('cuda')
                 
                 # Execute
