@@ -110,6 +110,13 @@ def main():
     current_features = [feature_matrix]
     struct_weight = 1.0
     
+    # Guard: fail fast if embeddings requested but filepath column missing
+    if (args.embeddings or args.gnn_embeddings) and file_names is None:
+        raise ValueError(
+            "Embeddings requested but 'filepath' column missing from features CSV. "
+            "Cannot align embeddings without file paths."
+        )
+    
     # Helper to align embeddings
     def load_and_align_embeddings(emb_path: Path, target_files: list, scaling_factor: float):
         if not emb_path.exists():
@@ -132,15 +139,25 @@ def main():
             if embeddings.shape[0] != len(target_files):
                  print(f"      ❌ Shape mismatch: Embeddings {embeddings.shape[0]} vs Data {len(target_files)}")
                  return None
-            return embeddings * scaling_factor
+            # Standardize even in direct-alignment branch
+            from sklearn.preprocessing import StandardScaler
+            scaled = StandardScaler().fit_transform(embeddings)
+            return scaled * scaling_factor
 
         print(f"      Using mapping file: {mapping_path}")
         with open(mapping_path, 'r') as f:
             emb_files = json.load(f)
+        
+        # Validate lengths match before creating map
+        if len(emb_files) != embeddings.shape[0]:
+            raise ValueError(
+                f"Mapping file has {len(emb_files)} entries but embeddings has "
+                f"{embeddings.shape[0]} rows. Files are out of sync."
+            )
             
         # Create map: filepath -> embedding vector
         # Using string representation to match CSV filepath column
-        emb_map = {str(f): emb for f, emb in zip(emb_files, embeddings)}
+        emb_map = {str(f): emb for f, emb in zip(emb_files, embeddings, strict=True)}
         
         aligned_embeddings = []
         missing_count = 0
@@ -298,7 +315,15 @@ def main():
     print(f"\n💾 Saved results to {results_file}")
     
     # Save cluster info
-    summaries = analyze_clusters(cluster_result, clustering_features, available_features)
+    # clustering_features is in PCA-space (50-dim if reduced), cluster_centers are also 50-dim
+    # Generate feature names for PCA components for labeling
+    if clustering_features.shape[1] != len(available_features):
+        # Features were PCA-reduced, use component names
+        pca_feature_names = [f"pca_{i+1}" for i in range(clustering_features.shape[1])]
+        summaries = analyze_clusters(cluster_result, clustering_features, pca_feature_names)
+    else:
+        # No PCA, use original feature names
+        summaries = analyze_clusters(cluster_result, clustering_features, available_features)
     cluster_info = []
     for s in summaries:
         cluster_info.append({

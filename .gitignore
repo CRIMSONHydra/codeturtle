@@ -10,8 +10,16 @@ data/processed/
 outputs/
 *.npy
 *.csv
-*.json
+# Generated JSON files (outputs, mappings)
+outputs/*.json
+data/**/*.json
+
+# Keep tracked config files
+!package.json
+!tsconfig.json
+!*.config.json
 .DS_Store
 .coverage
 htmlcov/
 *.sqlite3
+*/vector_store/
