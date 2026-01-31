@@ -160,7 +160,6 @@ def save_default_config(output_path: Path) -> Path:
 # Feature extraction settings
 extraction:
   batch_size: 32
-  batch_size: 32
   parallel_workers: 0     # 0 = sequential (default), -1 = auto-detect
   use_onnx: true          # Use ONNX for faster embeddings
   use_gnn: false          # Enable GNN structural embeddings

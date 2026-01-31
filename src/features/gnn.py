@@ -4,6 +4,10 @@ Graph Neural Network for Code Analysis.
 Learns structural embeddings from AST graphs.
 """
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 import torch
 import torch.nn.functional as F
 import numpy as np

@@ -266,7 +266,7 @@ class EnsembleAnomalyDetector:
         if self.voting == 'soft':
             # Average scores
             combined_scores = (if_scores_norm + lof_scores_norm) / 2
-            # Threshold at mean + 2*std for anomaly classification
+            # Threshold at mean + 1.5*std for anomaly classification
             threshold = combined_scores.mean() + 1.5 * combined_scores.std()
             predictions = np.where(combined_scores >= threshold, -1, 1)
         else:
