@@ -38,6 +38,17 @@ def foo(x):
         data = converter.code_to_graph(code)
         assert data is None
 
+    def test_large_graph_rejection(self):
+        """Test that very large graphs are rejected."""
+        from unittest.mock import patch
+        code = "x = 1"
+        converter = ASTGraphConverter()
+        
+        # Patch MAX_NODES to be very small
+        with patch('src.features.graph_converter.MAX_NODES', 0):
+            data = converter.code_to_graph(code)
+            assert data is None
+
 class TestGNNModel:
     def test_model_structure(self):
         # CodeGNN determines input_dim internally from NUM_NODE_TYPES

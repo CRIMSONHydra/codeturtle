@@ -166,3 +166,16 @@ Garbage In, Garbage Out. To get better clusters:
     -   Adjust *Features*: Edit `src/features/structural.py` to add new counts (e.g., "list_comprehensions").
     -   Adjust *Weights*: Change how much Embeddings vs Structural features matter in `scripts/run_analysis.py`.
 4.  Re-run `run_analysis.py`.
+
+---
+
+## 🛡️ Troubleshooting & Stability
+
+**Deep Learning Failures (CUDA/GPU):**
+The system is designed to be **fault-tolerant**:
+-   If you see `CUDA Error` or `illegal memory access` in the logs, **don't panic**. The system will automatically catch this and switch to **CPU mode** for the affected batch.
+-   If `ONNX` and `GNN` are both enabled, GNN inference is automatically moved to CPU to prevent GPU context conflicts.
+
+**Memory Issues:**
+-   **Graph Too Large**: If a single file produces a graph > 5,000 nodes, it is automatically skipped to prevent Out-Of-Memory (OOM) crashes.
+-   **System OOM**: Reduce `--batch-size` (default 32) in `scripts/extract_features.py`.

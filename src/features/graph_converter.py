@@ -32,6 +32,10 @@ AST_NODE_TYPES = [
 NODE_TYPE_MAP = {name: i for i, name in enumerate(AST_NODE_TYPES)}
 NUM_NODE_TYPES = len(AST_NODE_TYPES) + 1  # +1 for "Unknown"
 
+# Graph size limits to prevent CUDA memory issues
+MAX_NODES = 5000
+MAX_EDGES = 50000
+
 
 class ASTGraphConverter:
     """Converts Python code to PyTorch Geometric graphs."""
@@ -105,10 +109,6 @@ class ASTGraphConverter:
 
         if node_count == 0:
             return None
-        
-        # Size limits to prevent CUDA memory issues
-        MAX_NODES = 5000
-        MAX_EDGES = 50000
         
         if node_count > MAX_NODES:
             logger.debug(f"Graph too large: {node_count} nodes (max {MAX_NODES})")
