@@ -315,15 +315,10 @@ def main():
     print(f"\n💾 Saved results to {results_file}")
     
     # Save cluster info
-    # clustering_features is in PCA-space (50-dim if reduced), cluster_centers are also 50-dim
-    # Generate feature names for PCA components for labeling
-    if clustering_features.shape[1] != len(available_features):
-        # Features were PCA-reduced, use component names
-        pca_feature_names = [f"pca_{i+1}" for i in range(clustering_features.shape[1])]
-        summaries = analyze_clusters(cluster_result, clustering_features, pca_feature_names)
-    else:
-        # No PCA, use original feature names
-        summaries = analyze_clusters(cluster_result, clustering_features, available_features)
+    # For meaningful cluster descriptions, use the ORIGINAL structural features
+    # not the PCA-reduced clustering_features. This gives human-readable labels.
+    # We still use cluster_result.labels which map correctly to the samples.
+    summaries = analyze_clusters(cluster_result, feature_matrix, available_features)
     cluster_info = []
     for s in summaries:
         cluster_info.append({

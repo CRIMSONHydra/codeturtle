@@ -387,7 +387,13 @@ class RiskDetector:
         return findings[:5]  # Limit magic number findings
     
     def _calculate_risk_score(self, findings: List[RiskFinding]) -> float:
-        """Calculate overall risk score from findings."""
+        """
+        Calculate overall risk score from findings.
+        
+        Uses logarithmic scaling to avoid ceiling effect at 100:
+        - Few findings: linear growth
+        - Many findings: diminishing returns (logarithmic)
+        """
         if not findings:
             return 0.0
         
@@ -398,10 +404,15 @@ class RiskDetector:
             RiskSeverity.CRITICAL: 50,
         }
         
-        total_score = sum(severity_weights[f.severity] for f in findings)
+        raw_score = sum(severity_weights[f.severity] for f in findings)
         
-        # Cap at 100
-        return min(100.0, total_score)
+        # Apply logarithmic scaling to avoid ceiling effect
+        # Formula: score = 100 * (1 - e^(-raw_score / 50))
+        # This gives ~63% at raw=50, ~86% at raw=100, ~95% at raw=150
+        import math
+        scaled_score = 100 * (1 - math.exp(-raw_score / 50))
+        
+        return round(scaled_score, 1)
 
 
 def check_code_risks(code: str, filepath: Optional[str] = None) -> RiskReport:
