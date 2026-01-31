@@ -66,6 +66,12 @@ We use Transformer-based models to convert code into a **768-dimensional dense v
     -   We extract the `[CLS]` token embedding, which represents the aggregate semantic meaning of the sequence.
 -   **Fallback**: If deep learning dependencies fail or GPU is missing, we fall back to **TF-IDF** (Term Frequency-Inverse Document Frequency) to generate "bag-of-words" embeddings.
 
+### Resilience & Crash Recovery
+The system is built to survive hardware failures, particularly CUDA issues which are common in deep learning pipelines.
+-   **Hybrid Execution**: If `ONNX` (GPU) and `PyTorch GNN` (GPU) are both enabled, the system automatically offloads GNN to CPU to avoid context conflicts, preventing `CUDNN_STATUS_INTERNAL_ERROR`.
+-   **Automatic Fallback**: If a CUDA error occurs during ONNX inference (e.g., driver timeout, OOM), the system catches the exception and seamlessly switches to the **CPU provider** for that batch and subsequent ones.
+-   **Validation**: The `GraphConverter` enforces hard limits on graph size (default: 5k nodes) to prevent "poison pill" inputs (like single files with 100k lines) from crashing the embedding worker.
+
 ## 4. Machine Learning Models
 **Modules**: `src.clustering`, `src.detection`
 

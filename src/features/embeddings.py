@@ -244,10 +244,40 @@ class CodeBERTEmbedder:
                     inputs = {k: v.to(self.device_obj) for k, v in inputs.items()}
                 
                 with torch.no_grad():
-                    outputs = self.model(**inputs)
-                    embeddings = outputs.last_hidden_state[:, 0, :]
-                    all_embeddings.append(embeddings.cpu().numpy())
-                    
+                    try:
+                        outputs = self.model(**inputs)
+                        embeddings = outputs.last_hidden_state[:, 0, :]
+                        all_embeddings.append(embeddings.cpu().numpy())
+                    except Exception as e:
+                        error_msg = str(e)
+                        is_cuda_error = "CUDA" in error_msg or "CUDNN" in error_msg
+                        
+                        if is_cuda_error and self.use_onnx and self.provider == "CUDAExecutionProvider":
+                            logger.warning(f"CUDA Error encountered: {e}")
+                            logger.warning("Attempting to fallback to CPU execution for ONNX...")
+                            
+                            # Re-initialize model on CPU
+                            try:
+                                from optimum.onnxruntime import ORTModelForFeatureExtraction
+                                self.model = ORTModelForFeatureExtraction.from_pretrained(
+                                    self.onnx_path,
+                                    provider="CPUExecutionProvider"
+                                )
+                                self.provider = "CPUExecutionProvider"
+                                logger.info("Successfully switched to CPU provider. Retrying batch...")
+                                
+                                # Retry inference
+                                outputs = self.model(**inputs)
+                                embeddings = outputs.last_hidden_state[:, 0, :]
+                                all_embeddings.append(embeddings.cpu().numpy())
+                                
+                            except Exception as fallback_error:
+                                logger.error(f"CPU Fallback failed: {fallback_error}")
+                                zeros = np.zeros((len(batch), EMBEDDING_DIMENSION))
+                                all_embeddings.append(zeros)
+                        else:
+                            raise e
+
             except Exception as e:
                 logger.error(f"Batch {batch_idx} failed: {e}")
                 # Add zeros for failed samples

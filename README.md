@@ -51,23 +51,22 @@ export GITHUB_TOKEN="your_token"
 # 2. Collect data from GitHub
 python scripts/collect_data.py --limit 3
 
-# 2. Extract features
-# 2. Extract features (with ONNX acceleration & caching)
+# 3. Extract features (with ONNX acceleration, caching & parallel processing)
 # Prerequisite: Export model first
 python scripts/export_onnx.py
 
-python scripts/extract_features.py --clean --onnx --cache
+python scripts/extract_features.py --clean --embeddings --onnx --cache --parallel -1
 
-# (Optional) Use GNN for deep structural analysis
+# (Optional) Add GNN for deep structural analysis
 # Train model first:
 uv run python scripts/train_gnn.py --epochs 20
-# Extract with GNN:
-uv run python scripts/extract_features.py --clean --gnn
+# Extract with all features:
+uv run python scripts/extract_features.py --clean --embeddings --onnx --gnn --parallel -1
 
-# 3. Run analysis (pass the GNN embeddings file)
-python scripts/run_analysis.py --visualize --report --gnn-embeddings outputs/gnn_embeddings.npy
+# 4. Run analysis with visualizations
+python scripts/run_analysis.py --embeddings outputs/embeddings.npy --gnn-embeddings outputs/gnn_embeddings.npy --visualize --report
 
-# 4. Launch dashboard
+# 5. Launch dashboard
 streamlit run src/visualization/dashboard.py
 ```
 

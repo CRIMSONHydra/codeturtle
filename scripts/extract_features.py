@@ -47,10 +47,12 @@ def _extract_single_file(args_tuple):
             row = features.to_dict()
             row['filepath'] = str(path)
             row['filename'] = path.name
-            return ('ok', row)
-        return ('fail', str(path))
+            # Return cleaned code only if it was actually cleaned, to minimize IPC if not needed
+            # But simpler to always return the code used
+            return ('ok', row, code)
+        return ('fail', str(path), None)
     except Exception as e:
-        return ('fail', str(path))
+        return ('fail', str(path), None)
 
 
 def main():
@@ -153,8 +155,16 @@ def main():
     if args.gnn:
         print("\n🕸️  Initializing GNN model...")
         try:
+            import torch
             from src.features.gnn import GNNEmbedder
-            gnn_embedder = GNNEmbedder(use_gpu=args.onnx or args.embeddings) # Reuse GPU flag logic
+            # Use CPU for GNN when ONNX is enabled to avoid CUDA conflicts
+            # GNN is fast enough on CPU for graph processing
+            gnn_use_gpu = not args.onnx and (args.embeddings or torch.cuda.is_available())
+            gnn_embedder = GNNEmbedder(use_gpu=gnn_use_gpu)
+            if gnn_use_gpu:
+                print("   Using GPU for GNN")
+            else:
+                print("   Using CPU for GNN (avoids CUDA conflicts with ONNX)")
             if not gnn_embedder._has_model:
                 print("   ⚠️  GNN model not found or failed to load. Skipping GNN.")
                 gnn_embedder = None
@@ -190,50 +200,71 @@ def main():
     # Iterate through batches
     num_batches = (len(files) + args.batch_size - 1) // args.batch_size
     
-    for i, (paths, codes) in enumerate(tqdm(
-        batch_generator(files, args.batch_size),
-        total=num_batches,
-        desc="Processing batches",
-        unit="batch"
-    )):
-        
-        # 1. Structural Features (with optional parallel processing)
-        n_workers = args.parallel
-        if n_workers == -1:
-            n_workers = max(1, multiprocessing.cpu_count() - 1)
-        
-        if n_workers > 0:
-            # Parallel extraction
-            tasks = [(p, c, args.clean) for p, c in zip(paths, codes)]
-            with ProcessPoolExecutor(max_workers=n_workers) as executor:
-                for result in executor.map(_extract_single_file, tasks):
-                    if result[0] == 'ok':
-                        all_features.append(result[1])
-                    else:
-                        failed_count += 1
-        else:
-            # Sequential extraction (original behavior)
-            if args.clean:
-                cleaned_codes = []
-                for code in codes:
-                    try:
-                        cleaned_codes.append(clean_code(code))
-                    except Exception as e:
-                        cleaned_codes.append(code)
-                codes = cleaned_codes
+    # Initialize parallel executor once if needed
+    n_workers = args.parallel
+    if n_workers == -1:
+        n_workers = max(1, multiprocessing.cpu_count() - 1)
+    
+    executor = None
+    if n_workers > 0:
+        executor = ProcessPoolExecutor(max_workers=n_workers)
+        print(f"🚀 Using {n_workers} workers for structural extraction")
+
+    try:
+        for i, (paths, codes) in enumerate(tqdm(
+            batch_generator(files, args.batch_size),
+            total=num_batches,
+            desc="Processing batches",
+            unit="batch"
+        )):
+            
+            # 1. Structural Features & Cleaning
+            if executor:
+                # Parallel extraction
+                tasks = [(p, c, args.clean) for p, c in zip(paths, codes)]
                 
-            for path, code in zip(paths, codes, strict=True):
-                try:
-                    features = extract_structural_features(code)
-                    if features:
-                        row = features.to_dict()
-                        row['filepath'] = str(path)
-                        row['filename'] = path.name
-                        all_features.append(row)
+                # Results come in order from map
+                cleaned_codes_batch = []
+                
+                for idx, result in enumerate(executor.map(_extract_single_file, tasks)):
+                    status, data, returned_code = result
+                    if status == 'ok':
+                        all_features.append(data)
+                        if args.clean and returned_code:
+                            cleaned_codes_batch.append(returned_code)
+                        else:
+                            cleaned_codes_batch.append(codes[idx])
                     else:
                         failed_count += 1
-                except Exception as e:
-                    failed_count += 1
+                        cleaned_codes_batch.append(codes[idx])
+                
+                # Update codes for subsequent steps (Embeddings/GNN)
+                if args.clean:
+                    codes = cleaned_codes_batch
+                    
+            else:
+                # Sequential extraction
+                if args.clean:
+                    cleaned_codes = []
+                    for code in codes:
+                        try:
+                            cleaned_codes.append(clean_code(code))
+                        except Exception as e:
+                            cleaned_codes.append(code)
+                    codes = cleaned_codes
+                
+                for path, code in zip(paths, codes, strict=True):
+                    try:
+                        features = extract_structural_features(code)
+                        if features:
+                            row = features.to_dict()
+                            row['filepath'] = str(path)
+                            row['filename'] = path.name
+                            all_features.append(row)
+                        else:
+                            failed_count += 1
+                    except Exception as e:
+                        failed_count += 1
 
         # 2. Embeddings
         if embedder:
@@ -327,6 +358,10 @@ def main():
                 gnn_files.extend(batch_gnn_files)
                 
         total_processed += len(codes)
+    finally:
+        if executor:
+            executor.shutdown()
+            print("\n🛑 Parallel executor shut down")
 
     print(f"✅ Successfully extracted features from {len(all_features)} files")
     if failed_count:

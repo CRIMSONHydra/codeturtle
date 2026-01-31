@@ -23,7 +23,9 @@ from src.clustering import cluster_codes, analyze_clusters, print_cluster_report
 from src.detection import check_code_risks, detect_anomalies
 from src.features import StructuralFeatures
 from src.visualization.plots import create_summary_dashboard
+from src.visualization.html_report import generate_html_report
 from config.settings import OUTPUTS_DIR
+from config.project_config import load_config
 
 
 def main():
@@ -76,7 +78,42 @@ def main():
         action='store_true',
         help='Print detailed analysis report'
     )
+    parser.add_argument(
+        '--html',
+        action='store_true',
+        help='Generate HTML report'
+    )
+    parser.add_argument(
+        '--anomaly-algorithm',
+        choices=['isolation_forest', 'one_class_svm', 'ensemble'],
+        default='ensemble',
+        help='Anomaly detection algorithm (default: ensemble)'
+    )
+    parser.add_argument(
+        '--config',
+        type=Path,
+        default=None,
+        help='Path to codeturtle.yaml config file'
+    )
     
+    
+    # 1. Parse known args to check for config file
+    temp_args, _ = parser.parse_known_args()
+    
+    # 2. Load config
+    config = load_config(temp_args.config)
+    
+    # 3. Apply config values as defaults
+    parser.set_defaults(
+        algorithm=config.algorithm,
+        n_clusters=config.n_clusters,
+        anomaly_algorithm=config.anomaly_algorithm,
+        output=Path(config.output_dir),
+        visualize=config.generate_plots,
+        html=config.generate_html,
+    )
+    
+    # 4. Final parse to allow CLI overrides
     args = parser.parse_args()
     
     print("\n🐢 CodeTurtle Analysis Pipeline")
@@ -299,9 +336,13 @@ def main():
         print(f"   High-risk files (>=60): {sum(1 for s in risk_scores if s >= 60)}")
     
     # Anomaly detection
-    print("\n🔍 Detecting anomalies...")
+    print(f"\\n🔍 Detecting anomalies (algorithm: {args.anomaly_algorithm})...")
     
-    anomaly_report = detect_anomalies(feature_matrix, contamination=0.1)
+    anomaly_report = detect_anomalies(
+        feature_matrix, 
+        contamination=config.contamination,
+        algorithm=args.anomaly_algorithm
+    )
     df['is_anomaly'] = anomaly_report.results
     df['anomaly_score'] = [r.anomaly_score for r in anomaly_report.results]
     
@@ -359,6 +400,22 @@ def main():
         if risk_scores:
             print(f"High-risk files: {sum(1 for s in risk_scores if s >= 60)}")
         print(f"\nResults saved to: {args.output}")
+    
+    # Generate HTML report
+    if args.html:
+        print("\n📄 Generating HTML report...")
+        # Ensure filename column exists for the report generator
+        if 'filename' not in df.columns and 'filepath' in df.columns:
+            # Create simple filename from filepath
+            df['filename'] = df['filepath'].apply(lambda x: Path(str(x)).name)
+            
+        html_path = generate_html_report(
+            df=df,
+            cluster_info=cluster_info,
+            output_path=args.output,
+            include_plots=args.visualize,
+        )
+        print(f"   HTML report: {html_path}")
     
     print("\n🎉 Analysis complete!")
 

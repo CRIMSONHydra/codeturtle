@@ -4,6 +4,10 @@ Graph Neural Network for Code Analysis.
 Learns structural embeddings from AST graphs.
 """
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -81,12 +85,7 @@ class GNNEmbedder:
             self.model.eval()
             self._has_model = True
         except (RuntimeError, FileNotFoundError, AttributeError) as e:
-            # logger.warning is commented out in original file but requested to be enabled
-            # assuming logger needs to be defined/imported or just use print if logger not available
-            # The user requested: "re-enable logging (uncomment or use the module logger)"
-            # Let's assume logger is available or we add it (it is not currently imported in the snippet)
-            # Actually, gnn.py doesn't have logger setup. I'll add logging import.
-            print(f"⚠️ Failed to load GNN model from {model_path}: {e}") 
+            logger.warning(f"Failed to load GNN model from {model_path}: {e}") 
             self._has_model = False
             
         self.converter = ASTGraphConverter(use_gpu=use_gpu)
@@ -99,14 +98,44 @@ class GNNEmbedder:
         data = self.converter.code_to_graph(code)
         if data is None:
             return np.zeros(32)
-            
-        data = data.to(self.device)
         
-        # Batch vector for single graph (all zeros)
-        batch = torch.zeros(data.x.size(0), dtype=torch.long, device=self.device)
-        
-        with torch.no_grad():
-            _, embedding = self.model(data.x, data.edge_index, batch)
+        try:
+            data = data.to(self.device)
             
-        return embedding.cpu().numpy().squeeze()
+            # Batch vector for single graph (all zeros)
+            batch = torch.zeros(data.x.size(0), dtype=torch.long, device=self.device)
+            
+            with torch.no_grad():
+                _, embedding = self.model(data.x, data.edge_index, batch)
+                
+            return embedding.cpu().numpy().squeeze()
+            
+        except RuntimeError as e:
+            # CUDA errors - try CPU fallback
+            if "CUDA" in str(e) or "cuda" in str(e):
+                try:
+                    # Clear CUDA cache and try on CPU
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    
+                    # Move model and data to CPU for this inference
+                    data_cpu = data.to('cpu')
+                    batch_cpu = torch.zeros(data_cpu.x.size(0), dtype=torch.long, device='cpu')
+                    
+                    # Temporarily move model to CPU
+                    model_cpu = self.model.to('cpu')
+                    with torch.no_grad():
+                        _, embedding = model_cpu(data_cpu.x, data_cpu.edge_index, batch_cpu)
+                    
+                    # Move model back to GPU
+                    self.model.to(self.device)
+                    
+                    return embedding.numpy().squeeze()
+                except Exception as e_cpu:
+                    print(f"⚠️ GNN CPU fallback failed: {e_cpu}")
+                    # Ensure model is back on device even if CPU inference failed
+                    if hasattr(self, 'model'):
+                        self.model.to(self.device)
+            
+            return np.zeros(32)
 
