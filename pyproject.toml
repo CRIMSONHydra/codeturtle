@@ -35,6 +35,9 @@ dependencies = [
     
     # Code Analysis Utilities
     "astor>=0.8.1",
+    
+    # Vector Storage for Embedding Cache
+    "chromadb>=0.4.0",
 ]
 
 [project.optional-dependencies]

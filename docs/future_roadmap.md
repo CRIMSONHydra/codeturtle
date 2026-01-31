@@ -7,8 +7,10 @@ Ideas for extending CodeTurtle and optimizing its performance.
 1.  **Batch Processing for Embeddings** (✅ Completed):
     -   Implemented streaming generator in `src/utils.py`.
     -   Processes batches (default 32) to keep RAM usage constant.
-2.  **Cached Embeddings**:
-    -   Use a dedicated vector database (like FAISS or ChromaDB) instead of `.npy` files to store embeddings, allowing incremental updates instead of re-processing everything.
+2.  **Cached Embeddings** (✅ Completed):
+    -   Implemented ChromaDB-backed vector store in `src/features/vector_store.py`.
+    -   Uses SHA-256 hashing for change detection.
+    -   Use `--cache` flag to enable, `--clear-cache` to reset.
 3.  **ONNX Export**:
     -   Convert the PyTorch CodeBERT model to ONNX runtime for 2-3x faster inference on CPU/GPU.
 

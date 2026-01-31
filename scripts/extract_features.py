@@ -21,6 +21,7 @@ from config.settings import OUTPUTS_DIR, RAW_DATA_DIR
 
 
 from src.utils import batch_generator
+from src.features.vector_store import CodeVectorStore, compute_code_hash
 
 
 def main():
@@ -61,6 +62,16 @@ def main():
         default=32,
         help='Number of files to process per batch (default: 32)'
     )
+    parser.add_argument(
+        '--cache',
+        action='store_true',
+        help='Use ChromaDB to cache embeddings (skip unchanged files)'
+    )
+    parser.add_argument(
+        '--clear-cache',
+        action='store_true',
+        help='Clear the embedding cache before processing'
+    )
     
     args = parser.parse_args()
 
@@ -91,6 +102,20 @@ def main():
             print(f"⚠️ Could not load embeddings module: {e}")
             print("   Run: uv pip install transformers torch")
             return
+
+    # Initialize vector store if caching is enabled
+    vector_store = None
+    if args.cache and args.embeddings:
+        from config.settings import DATA_DIR
+        store_path = DATA_DIR / "vector_store"
+        vector_store = CodeVectorStore(persist_directory=store_path)
+        
+        if args.clear_cache:
+            print("\n🗑️ Clearing embedding cache...")
+            vector_store.clear()
+        else:
+            cached_count = vector_store.count()
+            print(f"\n💾 Embedding cache: {cached_count} files stored")
 
     # Process in batches
     print(f"\n⚙️ Processing in batches of {args.batch_size}...")
@@ -135,25 +160,33 @@ def main():
 
         # 2. Embeddings
         if embedder:
-            try:
-                # Embedder handles batching internally, but we feed it our batch
-                batch_embeddings = embedder.get_embeddings_batch(
-                    codes, 
-                    batch_size=args.batch_size, 
-                    show_progress=False
-                )
-                
-                # Careful: batch_embeddings might be smaller if some failed inside embedder?
-                # Actually get_embeddings_batch returns zeros for failed ones, so length matches `codes`
-                
-                # We need to sync embeddings with filenames. 
-                # Since we are iterating strictly parallel, logic should hold.
-                
-                all_embeddings.append(batch_embeddings)
-                embedding_files.extend([str(p) for p in paths])
-                
-            except Exception as e:
-                print(f"   ⚠️ Embedding batch failed: {e}")
+            # Filter to only process new/changed files if caching is enabled
+            emb_paths = paths
+            emb_codes = codes
+            
+            if vector_store:
+                emb_paths, emb_codes, _ = vector_store.filter_new_or_changed(paths, codes)
+                skipped = len(paths) - len(emb_paths)
+                if skipped > 0:
+                    print(f"      ⏭️ Skipped {skipped} cached files")
+            
+            if len(emb_codes) > 0:
+                try:
+                    batch_embeddings = embedder.get_embeddings_batch(
+                        emb_codes, 
+                        batch_size=args.batch_size, 
+                        show_progress=False
+                    )
+                    
+                    # Save to cache if enabled
+                    if vector_store:
+                        vector_store.add_embeddings(emb_paths, emb_codes, batch_embeddings)
+                    
+                    all_embeddings.append(batch_embeddings)
+                    embedding_files.extend([str(p) for p in emb_paths])
+                    
+                except Exception as e:
+                    print(f"   ⚠️ Embedding batch failed: {e}")
                 
         total_processed += len(codes)
 
