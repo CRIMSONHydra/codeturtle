@@ -81,7 +81,7 @@ uv run streamlit run src/visualization/dashboard.py
 2.  **Clusters Tab**: Look at the scatter plot.
     -   *Hover* over dots to see filenames.
     -   *Check* if similar files (e.g., sorting algorithms vs web views) are grouped together.
-3.  **Risk Tab**: Sort by "Risk Score". Open the highest risk files to see *why* they were flagged.
+3.  **Risk Tab**: Sort by "Risk Score". Open the highest-risk files to see *why* they were flagged.
 4.  **Code Viewer**: Select a file to see its source code alongside its metrics.
 
 ---

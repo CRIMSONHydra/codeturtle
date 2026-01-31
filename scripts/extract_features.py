@@ -109,12 +109,13 @@ def main():
             for code in codes:
                 try:
                     cleaned_codes.append(clean_code(code))
-                except:
+                except Exception as e:
+                    print(f"   ⚠️ Failed to clean code: {e}")
                     cleaned_codes.append(code) # Fallback to raw if clean fails
             codes = cleaned_codes
             
         # 1. Structural Features
-        for path, code in zip(paths, codes):
+        for path, code in zip(paths, codes, strict=True):
             try:
                 features = extract_structural_features(code)
                 if features:
@@ -124,7 +125,8 @@ def main():
                     all_features.append(row)
                 else:
                     failed_count += 1
-            except:
+            except Exception as e:
+                # logger.warning(f"Feature extraction failed for {path}: {e}")
                 failed_count += 1
 
         # 2. Embeddings
