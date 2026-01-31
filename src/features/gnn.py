@@ -81,12 +81,7 @@ class GNNEmbedder:
             self.model.eval()
             self._has_model = True
         except (RuntimeError, FileNotFoundError, AttributeError) as e:
-            # logger.warning is commented out in original file but requested to be enabled
-            # assuming logger needs to be defined/imported or just use print if logger not available
-            # The user requested: "re-enable logging (uncomment or use the module logger)"
-            # Let's assume logger is available or we add it (it is not currently imported in the snippet)
-            # Actually, gnn.py doesn't have logger setup. I'll add logging import.
-            print(f"⚠️ Failed to load GNN model from {model_path}: {e}") 
+            logger.warning(f"Failed to load GNN model from {model_path}: {e}") 
             self._has_model = False
             
         self.converter = ASTGraphConverter(use_gpu=use_gpu)
@@ -132,8 +127,11 @@ class GNNEmbedder:
                     self.model.to(self.device)
                     
                     return embedding.numpy().squeeze()
-                except Exception:
-                    pass
+                except Exception as e_cpu:
+                    print(f"⚠️ GNN CPU fallback failed: {e_cpu}")
+                    # Ensure model is back on device even if CPU inference failed
+                    if hasattr(self, 'model'):
+                        self.model.to(self.device)
             
             return np.zeros(32)
 

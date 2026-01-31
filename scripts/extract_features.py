@@ -47,10 +47,12 @@ def _extract_single_file(args_tuple):
             row = features.to_dict()
             row['filepath'] = str(path)
             row['filename'] = path.name
-            return ('ok', row)
-        return ('fail', str(path))
+            # Return cleaned code only if it was actually cleaned, to minimize IPC if not needed
+            # But simpler to always return the code used
+            return ('ok', row, code)
+        return ('fail', str(path), None)
     except Exception as e:
-        return ('fail', str(path))
+        return ('fail', str(path), None)
 
 
 def main():
@@ -153,6 +155,7 @@ def main():
     if args.gnn:
         print("\n🕸️  Initializing GNN model...")
         try:
+            import torch
             from src.features.gnn import GNNEmbedder
             # Use CPU for GNN when ONNX is enabled to avoid CUDA conflicts
             # GNN is fast enough on CPU for graph processing
@@ -215,18 +218,32 @@ def main():
             unit="batch"
         )):
             
-            # 1. Structural Features (with optional parallel processing)
+            # 1. Structural Features & Cleaning
             if executor:
                 # Parallel extraction
                 tasks = [(p, c, args.clean) for p, c in zip(paths, codes)]
-                # Using map directly on the existing executor
-                for result in executor.map(_extract_single_file, tasks):
-                    if result[0] == 'ok':
-                        all_features.append(result[1])
+                
+                # Results come in order from map
+                cleaned_codes_batch = []
+                
+                for idx, result in enumerate(executor.map(_extract_single_file, tasks)):
+                    status, data, returned_code = result
+                    if status == 'ok':
+                        all_features.append(data)
+                        if args.clean and returned_code:
+                            cleaned_codes_batch.append(returned_code)
+                        else:
+                            cleaned_codes_batch.append(codes[idx])
                     else:
                         failed_count += 1
+                        cleaned_codes_batch.append(codes[idx])
+                
+                # Update codes for subsequent steps (Embeddings/GNN)
+                if args.clean:
+                    codes = cleaned_codes_batch
+                    
             else:
-                # Sequential extraction (original behavior)
+                # Sequential extraction
                 if args.clean:
                     cleaned_codes = []
                     for code in codes:
@@ -236,18 +253,18 @@ def main():
                             cleaned_codes.append(code)
                     codes = cleaned_codes
                 
-            for path, code in zip(paths, codes, strict=True):
-                try:
-                    features = extract_structural_features(code)
-                    if features:
-                        row = features.to_dict()
-                        row['filepath'] = str(path)
-                        row['filename'] = path.name
-                        all_features.append(row)
-                    else:
+                for path, code in zip(paths, codes, strict=True):
+                    try:
+                        features = extract_structural_features(code)
+                        if features:
+                            row = features.to_dict()
+                            row['filepath'] = str(path)
+                            row['filename'] = path.name
+                            all_features.append(row)
+                        else:
+                            failed_count += 1
+                    except Exception as e:
                         failed_count += 1
-                except Exception as e:
-                    failed_count += 1
 
         # 2. Embeddings
         if embedder:

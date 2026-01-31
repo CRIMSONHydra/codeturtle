@@ -27,7 +27,6 @@ def generate_html_report(
     df: pd.DataFrame,
     cluster_info: List[Dict],
     output_path: Path,
-    output_path: Path,
     title: str = "CodeTurtle Analysis Report",
     include_plots: bool = True,
 ) -> Path:

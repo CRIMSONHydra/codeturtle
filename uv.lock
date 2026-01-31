@@ -753,7 +753,6 @@ dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "onnx" },
-    { name = "onnxruntime-gpu" },
     { name = "optimum", extra = ["onnxruntime"] },
     { name = "pandas" },
     { name = "plotly" },
@@ -781,6 +780,9 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
+gpu = [
+    { name = "onnxruntime-gpu" },
+]
 jupyter = [
     { name = "ipykernel" },
     { name = "jupyter" },
@@ -800,7 +802,7 @@ requires-dist = [
     { name = "networkx", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "onnx", specifier = ">=1.15.0" },
-    { name = "onnxruntime-gpu", specifier = ">=1.23.2" },
+    { name = "onnxruntime-gpu", marker = "extra == 'gpu'", specifier = ">=1.23.2" },
     { name = "optimum", extras = ["onnxruntime"], specifier = ">=1.16.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "plotly", specifier = ">=5.18.0" },
@@ -819,7 +821,7 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "transformers", specifier = ">=4.35.0" },
 ]
-provides-extras = ["dev", "jupyter"]
+provides-extras = ["gpu", "dev", "jupyter"]
 
 [[package]]
 name = "colorama"
