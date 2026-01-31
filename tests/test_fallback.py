@@ -106,6 +106,9 @@ class TestEmbedderFallback:
                     return (torch.tensor([0]), torch.randn(1, 32))
                     
                 mock_model.side_effect = model_side_effect
+                # Ensure .to() returns the same mock so call counts are preserved
+                mock_model.to.return_value = mock_model
+                
                 embedder.model = mock_model
                 # Wire the CodeGNN constructor to return our mock model for the fallback path
                 mock_codegnn.return_value = mock_model
