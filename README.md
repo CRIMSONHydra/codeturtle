@@ -1,11 +1,14 @@
 # 🐢 CodeTurtle
 
+[![CI](https://github.com/Start-Sandeep/codeturtle/actions/workflows/ci.yml/badge.svg)](https://github.com/Start-Sandeep/codeturtle/actions/workflows/ci.yml)
+
 **Discover Hidden Programming Patterns in Open-Source Code**
 
 CodeTurtle is an ML-powered system that analyzes GitHub Python code to discover hidden programming patterns, cluster similar coding styles, and detect risky or inefficient code.
 
 ## ✨ Features
 
+- **⚡ Optimized Processing**: Generators and batch processing for constant RAM usage
 - **📊 Pattern Discovery**: Cluster similar code patterns using K-Means, DBSCAN, or Hierarchical clustering
 - **🔍 Risk Detection**: Rule-based static analysis + ML anomaly detection
 - **🧠 Code Embeddings**: GPU-accelerated CodeBERT/UniXcoder embeddings
