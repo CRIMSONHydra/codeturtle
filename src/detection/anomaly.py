@@ -13,6 +13,7 @@ import logging
 
 from sklearn.ensemble import IsolationForest
 from sklearn.svm import OneClassSVM
+from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
 
 import sys
@@ -187,6 +188,125 @@ class AnomalyDetector:
         return self.predict(features)
 
 
+class EnsembleAnomalyDetector:
+    """
+    Ensemble anomaly detector combining multiple algorithms.
+    
+    Uses voting from Isolation Forest and Local Outlier Factor
+    for more robust anomaly detection.
+    """
+    
+    def __init__(
+        self,
+        contamination: float = ISOLATION_FOREST_CONTAMINATION,
+        voting: str = 'soft',  # 'soft' (average scores) or 'hard' (majority vote)
+    ):
+        """
+        Initialize ensemble detector.
+        
+        Args:
+            contamination: Expected proportion of outliers
+            voting: 'soft' for averaged scores, 'hard' for majority voting
+        """
+        self.contamination = contamination
+        self.voting = voting
+        self.scaler = StandardScaler()
+        self._is_fitted = False
+        
+        # Models
+        self.isolation_forest = IsolationForest(
+            contamination=contamination,
+            random_state=42,
+            n_estimators=100,
+        )
+        self.lof = LocalOutlierFactor(
+            n_neighbors=20,
+            contamination=contamination,
+            novelty=False,  # Use fit_predict mode
+        )
+    
+    def fit_predict(self, features: np.ndarray) -> AnomalyReport:
+        """
+        Fit ensemble and predict anomalies.
+        
+        Args:
+            features: Feature matrix (n_samples, n_features)
+            
+        Returns:
+            AnomalyReport with ensemble predictions
+        """
+        X = self.scaler.fit_transform(features)
+        
+        # Get predictions from each model
+        if_pred = self.isolation_forest.fit_predict(X)  # -1 = anomaly, 1 = normal
+        lof_pred = self.lof.fit_predict(X)  # -1 = anomaly, 1 = normal
+        
+        # Get scores
+        if_scores = -self.isolation_forest.score_samples(X)
+        lof_scores = -self.lof.negative_outlier_factor_
+        
+        # Normalize scores to 0-100
+        def normalize_scores(scores):
+            s_min, s_max = scores.min(), scores.max()
+            if s_max > s_min:
+                return (scores - s_min) / (s_max - s_min) * 100
+            return np.zeros_like(scores)
+        
+        if_scores_norm = normalize_scores(if_scores)
+        lof_scores_norm = normalize_scores(lof_scores)
+        
+        if self.voting == 'soft':
+            # Average scores
+            combined_scores = (if_scores_norm + lof_scores_norm) / 2
+            # Threshold at mean + 2*std for anomaly classification
+            threshold = combined_scores.mean() + 1.5 * combined_scores.std()
+            predictions = np.where(combined_scores >= threshold, -1, 1)
+        else:
+            # Hard voting - anomaly if both agree or either is very confident
+            # Anomaly if at least one model says anomaly
+            predictions = np.where((if_pred == -1) | (lof_pred == -1), -1, 1)
+            combined_scores = np.maximum(if_scores_norm, lof_scores_norm)
+        
+        # Calculate percentiles
+        percentiles = np.array([(combined_scores <= s).mean() * 100 for s in combined_scores])
+        
+        # Build results
+        results = []
+        for i in range(len(features)):
+            results.append(AnomalyResult(
+                is_anomaly=(predictions[i] == -1),
+                anomaly_score=combined_scores[i],
+                percentile=percentiles[i],
+            ))
+        
+        anomaly_mask = predictions == -1
+        anomaly_indices = np.where(anomaly_mask)[0]
+        normal_indices = np.where(~anomaly_mask)[0]
+        
+        threshold = combined_scores[anomaly_mask].min() if len(anomaly_indices) > 0 else 100.0
+        
+        stats = {
+            'n_samples': len(features),
+            'n_anomalies': len(anomaly_indices),
+            'anomaly_rate': len(anomaly_indices) / len(features) * 100,
+            'mean_score': combined_scores.mean(),
+            'std_score': combined_scores.std(),
+            'if_anomalies': (if_pred == -1).sum(),
+            'lof_anomalies': (lof_pred == -1).sum(),
+        }
+        
+        self._is_fitted = True
+        logger.info(f"Ensemble detected {len(anomaly_indices)} anomalies (IF: {stats['if_anomalies']}, LOF: {stats['lof_anomalies']})")
+        
+        return AnomalyReport(
+            results=results,
+            anomaly_indices=anomaly_indices,
+            normal_indices=normal_indices,
+            threshold=threshold,
+            algorithm=f'ensemble_{self.voting}',
+            stats=stats,
+        )
+
 def detect_anomalies(
     features: np.ndarray,
     contamination: float = ISOLATION_FOREST_CONTAMINATION,
@@ -198,15 +318,21 @@ def detect_anomalies(
     Args:
         features: Feature matrix
         contamination: Expected proportion of outliers
-        algorithm: Detection algorithm
+        algorithm: Detection algorithm ('isolation_forest', 'one_class_svm', 'ensemble')
         
     Returns:
         AnomalyReport
     """
-    detector = AnomalyDetector(
-        algorithm=algorithm,
-        contamination=contamination,
-    )
+    if algorithm == 'ensemble':
+        detector = EnsembleAnomalyDetector(
+            contamination=contamination,
+            voting='soft',
+        )
+    else:
+        detector = AnomalyDetector(
+            algorithm=algorithm,
+            contamination=contamination,
+        )
     return detector.fit_predict(features)
 
 

@@ -64,6 +64,16 @@ uv run python scripts/extract_features.py --clean --embeddings --cache --onnx
 ```
 *Use `--clear-cache` to reset the embedding cache.*
 
+**Parallel Processing (Multi-Core Speedup):**
+Use multiple CPU cores for structural feature extraction.
+```bash
+# Auto-detect cores (-1 = all but one)
+uv run python scripts/extract_features.py --clean --embeddings --onnx --parallel -1
+
+# Specify exact worker count
+uv run python scripts/extract_features.py --clean --parallel 4
+```
+
 
 **With Graph Neural Networks (Deep Structural Analysis):**
 Capture complex structural patterns (like recursive logic flow) using a GNN.
@@ -71,10 +81,11 @@ Capture complex structural patterns (like recursive logic flow) using a GNN.
 # 1. Train the GNN on your collected data (Self-Supervised)
 uv run python scripts/train_gnn.py --epochs 20
 
-# 2. Extract features using the trained model
-uv run python scripts/extract_features.py --clean --gnn
-# Value matches the output filename from step 2 (gnn_embeddings.npy)
-uv run python scripts/run_analysis.py --gnn-embeddings outputs/gnn_embeddings.npy --report
+# 2. Extract features using the trained model (with parallel + ONNX)
+uv run python scripts/extract_features.py --clean --embeddings --onnx --gnn --parallel -1
+
+# 3. Analyze with both embedding types
+uv run python scripts/run_analysis.py --embeddings outputs/embeddings.npy --gnn-embeddings outputs/gnn_embeddings.npy --visualize --report
 ```
 
 ---
@@ -84,17 +95,44 @@ uv run python scripts/run_analysis.py --gnn-embeddings outputs/gnn_embeddings.np
 Run the ML pipeline to cluster code and find risks.
 
 ```bash
-uv run python scripts/run_analysis.py --output outputs/my_experiment --visualize --report
+uv run python scripts/run_analysis.py --output outputs/my_experiment --visualize --report --html
 ```
 
 **Options:**
 -   `--algorithm`: Choose `kmeans` (default), `dbscan`, or `hierarchical`.
 -   `--n-clusters`: Force a specific number of clusters (e.g., `5`). If omitted, it auto-detects.
 -   `--visualize`: Generates static plots (PNGs) in the output folder.
+-   `--html`: Generate a beautiful HTML report with charts and tables.
+-   `--anomaly-algorithm`: Choose `ensemble` (default), `isolation_forest`, or `one_class_svm`.
 
 ---
 
-## Step 4: Visual Dashboard (Interpretation)
+## Step 4: Configuration File (Optional)
+
+Create a `codeturtle.yaml` in your project root for persistent configuration:
+
+```yaml
+# codeturtle.yaml
+extraction:
+  parallel_workers: -1
+  use_onnx: true
+  use_gnn: true
+
+analysis:
+  algorithm: kmeans
+  anomaly_algorithm: ensemble
+  contamination: 0.1
+
+output:
+  html_report: true
+  plots: true
+```
+
+Then run analysis with `--config codeturtle.yaml` or it will auto-detect.
+
+---
+
+## Step 5: Visual Dashboard (Interpretation)
 
 Launch the interactive web UI to explore the results.
 

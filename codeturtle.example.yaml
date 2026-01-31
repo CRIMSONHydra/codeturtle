@@ -1,0 +1,38 @@
+# CodeTurtle Configuration
+# Copy to your project root as codeturtle.yaml
+
+# Feature extraction settings
+extraction:
+  batch_size: 32
+  parallel_workers: -1    # -1 = auto-detect, 0 = sequential
+  use_onnx: true          # Use ONNX for faster embeddings
+  use_gnn: false          # Enable GNN structural embeddings
+  use_cache: true         # Cache embeddings for incremental updates
+  clean_code: true        # Clean comments/docstrings before analysis
+
+# Analysis settings
+analysis:
+  algorithm: kmeans       # kmeans, dbscan, or hierarchical
+  n_clusters: null        # null = auto-detect optimal k
+  anomaly_algorithm: ensemble  # isolation_forest, one_class_svm, or ensemble
+  contamination: 0.1      # Expected proportion of anomalies
+  
+  # Risk score weights (should sum to 1.0)
+  risk_weights:
+    structural: 0.4
+    anomaly: 0.3
+    rule_based: 0.3
+
+# Output settings
+output:
+  directory: outputs
+  html_report: true
+  plots: true
+
+# Files to exclude from analysis
+excluded_patterns:
+  - "test_*.py"
+  - "*_test.py"
+  - "setup.py"
+  - "conftest.py"
+  - "__init__.py"
