@@ -137,7 +137,7 @@ def plot_clusters(
             ax.scatter(
                 reduced[mask, 0],
                 reduced[mask, 1],
-                c=[colors[idx]],
+                c=[colors[label % len(colors)]],
                 s=80,
                 alpha=0.7,
                 label=f'Cluster {label} ({mask.sum()})',
